@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grenfell Tower — Educational Reconstruction</title>
+<style>
+  :root{
+    --ink:#22252a;
+    --paper:#f0eee9;
+    --line:#c9c5bc;
+    --muted:#6d6a63;
+    --heart:#0f8148;
+    --heart-dark:#0b6b3c;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#a8cdec;
+    font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--ink)}
+  #scene{position:fixed;inset:0;display:block;width:100%;height:100%;z-index:1}
+
+  /* ---------- archival record card ---------- */
+  .card{
+    position:fixed;top:18px;left:18px;width:290px;max-width:calc(100vw - 36px);
+    background:var(--paper);border:1px solid var(--line);
+    box-shadow:0 2px 14px rgba(30,32,36,.16);
+    padding:16px 18px 14px;z-index:5;
+  }
+  .card .eyebrow{
+    font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;gap:8px;margin-bottom:8px;
+  }
+  .card .eyebrow::after{content:"";flex:1;height:1px;background:var(--line)}
+  .card h1{font-family:Georgia,"Times New Roman",serif;font-weight:600;
+    font-size:23px;line-height:1.1;letter-spacing:-.01em;margin-bottom:2px}
+  .card .sub{font-size:12px;color:var(--muted);margin-bottom:12px}
+  dl{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:12px;margin-bottom:12px}
+  dt{color:var(--muted)} dd{font-variant-numeric:tabular-nums}
+
+  .history-toggle{
+    width:100%;appearance:none;border:1px solid var(--ink);background:transparent;
+    color:var(--ink);font:inherit;font-size:11.5px;letter-spacing:.03em;
+    padding:8px 10px;cursor:pointer;margin-bottom:9px;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;
+  }
+  .history-toggle:hover{background:rgba(34,37,42,.04)}
+  .history-toggle[aria-expanded="true"]{background:var(--ink);color:var(--paper)}
+  .history-toggle:focus-visible{outline:2px solid var(--heart);outline-offset:-3px}
+  .history-toggle .chev{flex:none;font-size:9px;opacity:.7;transition:transform .2s}
+  .history-toggle[aria-expanded="true"] .chev{transform:rotate(180deg);opacity:1}
+  .history-panel{
+    font-size:11.5px;line-height:1.52;color:var(--muted);
+    margin:-2px 0 9px;max-height:min(42vh,340px);overflow-y:auto;padding-right:4px;
+  }
+  .history-panel h2{
+    font-family:Georgia,"Times New Roman",serif;font-size:12.5px;font-weight:600;
+    color:var(--ink);margin:12px 0 5px;
+  }
+  .history-panel h2:first-child{margin-top:0}
+  .history-panel p{margin:0 0 9px}
+  label.rotate{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+  label.rotate input{accent-color:var(--heart)}
+
+  /* ---------- tributes card (sign in + compose) ---------- */
+  .tributes{
+    position:fixed;top:18px;right:18px;width:250px;max-width:calc(100vw - 36px);
+    background:var(--paper);border:1px solid var(--line);
+    box-shadow:0 2px 14px rgba(30,32,36,.16);padding:14px 16px;z-index:5;
+  }
+  .tributes .eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .tributes .eyebrow::after{content:"";flex:1;height:1px;background:var(--line)}
+  .tributes p{font-size:12px;color:var(--muted);margin-bottom:9px;line-height:1.45}
+  .tributes input[type=text]{
+    width:100%;border:1px solid var(--line);background:#fff;padding:7px 9px;
+    font:inherit;font-size:12.5px;margin-bottom:8px;
+  }
+  .tributes input:focus-visible{outline:2px solid var(--heart);outline-offset:-1px}
+  .tributes button.go{
+    width:100%;appearance:none;border:1px solid var(--heart-dark);
+    background:var(--heart);color:#fff;font:inherit;font-size:12.5px;
+    padding:8px;cursor:pointer;letter-spacing:.02em;
+  }
+  .tributes button.go:hover{background:var(--heart-dark)}
+  .tributes button.go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .tributes .who{font-size:11.5px;color:var(--muted);margin-bottom:8px}
+  .tributes .who b{color:var(--ink);font-weight:600}
+  .tributes .who a{color:var(--muted);cursor:pointer;text-decoration:underline}
+  .tributes .count{font-size:10.5px;color:var(--muted);text-align:right;margin:-4px 0 6px}
+  .hidden{display:none}
+
+  /* ---------- floating tribute hearts ---------- */
+  #hearts{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:4}
+  .tf{position:absolute;bottom:-150px;opacity:0;will-change:transform,opacity;
+      animation:rise var(--dur,9s) linear forwards}
+  .tf-sway{animation:sway var(--swaydur,3.4s) ease-in-out infinite alternate}
+  .tf-pop{animation:pop .55s cubic-bezier(.2,1.7,.45,1) both;
+      position:relative;width:var(--sz,126px);aspect-ratio:1/0.94;
+      filter:drop-shadow(0 4px 10px rgba(15,90,50,.35))}
+  .tf-pop svg{position:absolute;inset:0;width:100%;height:100%}
+  .tf-copy{
+    position:absolute;inset:16% 12% 20%;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;gap:1px;
+  }
+  .tf-copy span{
+    color:#fff;font-size:11.5px;line-height:1.25;font-weight:500;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  }
+  .tf-copy small{
+    color:rgba(255,255,255,.72);font-size:7.5px;letter-spacing:.04em;line-height:1.15;
+  }
+  @keyframes rise{
+    0%{transform:translateY(0);opacity:0}
+    7%{opacity:1}
+    78%{opacity:1}
+    100%{transform:translateY(calc(-100vh + 120px));opacity:0}
+  }
+  @keyframes sway{from{transform:translateX(calc(var(--sway,26px) * -1)) rotate(-3deg)}
+                  to{transform:translateX(var(--sway,26px)) rotate(3deg)}}
+  @keyframes pop{from{transform:scale(0) rotate(-14deg)}
+                 60%{transform:scale(1.12) rotate(3deg)}
+                 to{transform:scale(1) rotate(0)}}
+  @media (prefers-reduced-motion: reduce){
+    .tf{bottom:auto;top:42%;animation:fadeonly var(--dur,9s) linear forwards}
+    .tf-sway,.tf-pop{animation:none}
+    @keyframes fadeonly{0%{opacity:0}10%{opacity:1}80%{opacity:1}100%{opacity:0}}
+    .prm-hide{display:none}
+  }
+
+  /* ---------- memorial line & hint ---------- */
+  .memorial{
+    position:fixed;left:18px;bottom:18px;max-width:calc(100vw - 36px);
+    display:flex;align-items:center;gap:10px;z-index:5;
+    background:var(--paper);border:1px solid var(--line);
+    padding:9px 14px;font-size:12px;color:var(--ink);
+    box-shadow:0 2px 10px rgba(30,32,36,.14);
+  }
+  .memorial svg{width:14px;height:14px;flex:none}
+  .memorial svg path{fill:var(--heart)}
+  .memorial em{font-style:normal;color:var(--muted)}
+  .hint{position:fixed;right:18px;bottom:18px;font-size:11px;color:var(--muted);z-index:5;
+    background:rgba(240,238,233,.85);border:1px solid var(--line);padding:5px 11px}
+  @media (max-width:760px){
+    .hint{display:none}
+    .card{width:236px;padding:12px 14px}
+    .card h1{font-size:19px}
+    dl{display:none}
+    .tributes{top:auto;bottom:64px;right:12px;width:216px}
+    .memorial{font-size:11px}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="3D reconstruction of Grenfell Tower"></canvas>
+<div id="hearts" aria-hidden="true"></div>
+
+<aside class="card">
+  <div class="eyebrow">Educational reconstruction</div>
+  <h1>Grenfell Tower</h1>
+  <div class="sub">Lancaster West Estate, North Kensington, London W11</div>
+  <dl>
+    <dt>Completed</dt><dd>1974</dd>
+    <dt>Storeys</dt><dd>24</dd>
+    <dt>Height</dt><dd>67.3 m</dd>
+    <dt>Homes</dt><dd>120 flats</dd>
+  </dl>
+  <button type="button" class="history-toggle" id="historyToggle"
+          aria-expanded="false" aria-controls="historyPanel">
+    <span>Building history</span>
+    <span class="chev" aria-hidden="true">▼</span>
+  </button>
+  <div id="historyPanel" class="history-panel hidden" role="region" aria-label="Building history">
+    <h2>The building</h2>
+    <p>Grenfell Tower was completed in 1974 as part of the Lancaster West Estate in
+       North Kensington, London. The 24-storey block provided around 120 homes above a
+       raised podium with community rooms, walkways, and open space at ground level.</p>
+    <p>Its architecture belongs to the post-war social housing tradition: a reinforced
+       concrete frame, ribbed concrete piers, dark spandrel bands, and white infill
+       panels. For more than forty years it was home to a settled, diverse community.</p>
+    <h2>Refurbishment</h2>
+    <p>Between 2012 and 2016 the tower underwent a major refurbishment. The exterior
+       was reclad with aluminium composite rainscreen panels and the windows were
+       replaced. The work changed how the building looked and how its outer walls
+       performed — a matter examined in detail by the public inquiry that followed.</p>
+    <h2>14 June 2017</h2>
+    <p>On the night of 14 June 2017 a fire spread through the tower. Seventy-two people
+       lost their lives. Many others were injured, bereaved, or lost their homes and
+       possessions. The disaster affected families across North Kensington and far
+       beyond.</p>
+    <p>Those who died are remembered by the community, by inquiry and inquest processes,
+       and by memorial efforts led by survivors and bereaved families. This reconstruction
+       is offered in that spirit — to preserve knowledge of the building and to make
+       quiet space for remembrance.</p>
+    <h2>Today</h2>
+    <p>The physical tower is being carefully dismantled. Digital reconstruction is one way
+       future generations may come to understand the architecture of the estate and the
+       events of 2017. The geometry shown here is approximate and intended for education,
+       not as a survey record.</p>
+  </div>
+  <label class="rotate"><input type="checkbox" id="autorotate" checked> Slow orbit</label>
+</aside>
+
+<aside class="tributes">
+  <div class="eyebrow">Tributes</div>
+  <div id="signin">
+    <p>Sign in to release a green heart beside the tower.</p>
+    <input type="text" id="name" placeholder="Your name" maxlength="24" autocomplete="off">
+    <button class="go" id="signinBtn">Sign in</button>
+  </div>
+  <div id="compose" class="hidden">
+    <div class="who">Signed in as <b id="whoName"></b> · <a id="signout">sign out</a></div>
+    <input type="text" id="msg" placeholder="Leave a message…" maxlength="60" autocomplete="off">
+    <div class="count"><span id="chars">0</span>/60</div>
+    <button class="go" id="sendBtn">Release a heart</button>
+  </div>
+</aside>
+
+<div class="memorial">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.2 8.4 2 4.9 5.6 4.3 8 3.9 10.5 5 12 7c1.5-2 4-3.1 6.4-2.7 3.6.6 5.4 4.1 3.6 7.4C19.5 16.1 12 21 12 21z"/></svg>
+  <span>In memory of the 72 people who lost their lives, 14 June 2017.&nbsp;<em>Geometry approximate.</em></span>
+</div>
+
+<div class="hint prm-hide">drag to orbit &nbsp;·&nbsp; scroll or pinch to zoom</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  // ================= renderer / scene =================
+  const canvas = document.getElementById('scene');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+
+  // -------- sky: blue gradient with soft drifting clouds --------
+  const sky = (function(){
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 1024;
+    const ctx = c.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+    grad.addColorStop(0.0, '#5fa8e6');
+    grad.addColorStop(0.5, '#9cc8ee');
+    grad.addColorStop(1.0, '#e8f1f8');
+
+    function puff(cx, cy, r, a){
+      const rg = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
+      rg.addColorStop(0, 'rgba(255,255,255,' + a + ')');
+      rg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function buildCloud(cx, cy, s, seed, vx){
+      const puffs = [];
+      let state = seed;
+      const rnd = () => { state = (state * 16807) % 2147483647; return (state - 1) / 2147483646; };
+      for (let i = 0; i < 9; i++) {
+        puffs.push({
+          dx: (rnd() - 0.5) * s * 2.4,
+          dy: (rnd() - 0.5) * s * 0.6,
+          r: s * (0.5 + rnd() * 0.6),
+          a: 0.5 + rnd() * 0.3,
+        });
+      }
+      return { cx, cy, vx, puffs };
+    }
+
+    const clouds = [
+      buildCloud(190, 250, 55, 101,  2.8),
+      buildCloud(760, 180, 65, 202,  3.6),
+      buildCloud(520, 340, 45, 303,  2.2),
+      buildCloud(880, 430, 50, 404,  3.1),
+      buildCloud(120, 470, 40, 505,  2.5),
+      buildCloud(400, 150, 50, 606,  3.4),
+    ];
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+
+    function redraw(t){
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1024, 1024);
+      for (const cl of clouds) {
+        const drift = ((cl.cx + t * cl.vx) % 1024 + 1024) % 1024;
+        for (const p of cl.puffs) {
+          puff(drift + p.dx, cl.cy + p.dy, p.r, p.a);
+        }
+      }
+      tex.needsUpdate = true;
+    }
+
+    redraw(0);
+    scene.background = tex;
+    return { redraw };
+  })();
+  scene.fog = new THREE.Fog(0xe8f1f8, 280, 750);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 1400);
+
+  // -------- light: sunny afternoon, like the photos --------
+  scene.add(new THREE.HemisphereLight(0xdcecff, 0x8c8a7c, 0.85));
+  const sun = new THREE.DirectionalLight(0xfff0d8, 1.15);
+  sun.position.set(-95, 120, 85);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left=-80; sun.shadow.camera.right=80;
+  sun.shadow.camera.top=110;  sun.shadow.camera.bottom=-20;
+  sun.shadow.camera.far=420;  sun.shadow.bias=-0.0005;
+  scene.add(sun);
+
+  // ================= dimensions (m, approximate) =================
+  const PLAN = 21.9;
+  const FLOOR_H = 2.64;
+  const CORNER = 1.05;            // solid corner column width
+  const BAYS = 4;                 // window bays per elevation (1974)
+  const BAY_W = (PLAN - CORNER*2) / BAYS;
+  const PILOTI_H = 3.8;           // open ground level on columns
+  const MEZZ_H  = 5.0;            // community / walkway band (pink panels + glazing)
+  const PODIUM_H = PILOTI_H + MEZZ_H;      // 8.8
+  const RES_FLOORS = 20;
+  const RES_H = RES_FLOORS * FLOOR_H;      // 52.8
+  const CROWN_H = 2.7;            // top plant level with small openings
+  const ROOF_Y = PODIUM_H + RES_H + CROWN_H;   // ≈ 64.3 + parapet ≈ 67
+
+  // ================= materials =================
+  const mat = {
+    // 1974 palette, sampled from the photos
+    pier:      new THREE.MeshStandardMaterial({color:0x93887a, roughness:0.95}),   // ribbed buff concrete
+    pierDk:    new THREE.MeshStandardMaterial({color:0x7c7264, roughness:0.95}),
+    spandrel:  new THREE.MeshStandardMaterial({color:0x4a4239, roughness:1.0 }),   // dark aggregate band
+    whitePanel:new THREE.MeshStandardMaterial({color:0xe9e5da, roughness:0.8 }),
+    glass:     new THREE.MeshStandardMaterial({color:0x33414d, metalness:0.7, roughness:0.22}),
+    glassMezz: new THREE.MeshStandardMaterial({color:0x435463, metalness:0.6, roughness:0.3 }),
+    pink:      new THREE.MeshStandardMaterial({color:0xb49aa6, roughness:0.85}),   // mauve podium panels
+    deck:      new THREE.MeshStandardMaterial({color:0x9a917f, roughness:1.0 }),
+    screen:    new THREE.MeshStandardMaterial({color:0xaaa290, roughness:0.95}),
+    awning:    new THREE.MeshStandardMaterial({color:0x2e6ea6, roughness:0.6 }),
+    dark:      new THREE.MeshStandardMaterial({color:0x2c2a26, roughness:0.9 }),
+    metal:     new THREE.MeshStandardMaterial({color:0x555a5e, metalness:0.7, roughness:0.4}),
+    // 2016 palette
+    clad:      new THREE.MeshStandardMaterial({color:0xc4c9cd, metalness:0.35, roughness:0.45}),
+    cladDk:    new THREE.MeshStandardMaterial({color:0x9aa1a7, metalness:0.35, roughness:0.5 }),
+    glass16:   new THREE.MeshStandardMaterial({color:0x2b333c, metalness:0.85, roughness:0.18}),
+    // ground
+    grass:     new THREE.MeshStandardMaterial({color:0x8fa07e, roughness:1.0}),
+    path:      new THREE.MeshStandardMaterial({color:0xa8a49a, roughness:1.0}),
+    lowBlock:  new THREE.MeshStandardMaterial({color:0xa39c8e, roughness:0.95}),
+    tree:      new THREE.MeshStandardMaterial({color:0x5e7a4a, roughness:1.0}),
+    trunk:     new THREE.MeshStandardMaterial({color:0x6b5a48, roughness:1.0})
+  };
+
+  function box(group, w,h,d, x,y,z, material, cast=true){
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), material);
+    m.position.set(x,y,z);
+    m.castShadow = cast; m.receiveShadow = true;
+    group.add(m); return m;
+  }
+
+  // place a list of facade items on all four elevations
+  // item: {w,h,d, along, up, out, mat}
+  function onFourSides(group, items){
+    const half = PLAN/2;
+    items.forEach(it=>{
+      for(let side=0; side<4; side++){
+        const g = new THREE.Mesh(new THREE.BoxGeometry(it.w, it.h, it.d), it.mat);
+        g.castShadow = true; g.receiveShadow = true;
+        const out = half + it.out;
+        if(side===0){ g.position.set(it.along, it.up,  out); }
+        if(side===1){ g.position.set(-it.along, it.up, -out); }
+        if(side===2){ g.position.set( out, it.up, -it.along); g.rotation.y = Math.PI/2; }
+        if(side===3){ g.position.set(-out, it.up, it.along);  g.rotation.y = Math.PI/2; }
+        group.add(g);
+      }
+    });
+  }
+
+  // ================= 1974 tower (photo reference: images 1 & 3) =================
+  function build1974(){
+    const g = new THREE.Group();
+
+    // core mass behind the facade
+    box(g, PLAN, RES_H + CROWN_H, PLAN, 0, PODIUM_H + (RES_H+CROWN_H)/2, 0, mat.pierDk);
+
+    const items = [];
+    const SPAND_H = 1.15;                  // dark aggregate band
+    const WIN_H   = FLOOR_H - SPAND_H;     // 1.49 window strip
+
+    for(let f=0; f<RES_FLOORS; f++){
+      const y0 = PODIUM_H + f*FLOOR_H;
+      // continuous dark spandrel band across the face
+      items.push({w:PLAN - CORNER*2, h:SPAND_H, d:0.14,
+                  along:0, up:y0 + SPAND_H/2, out:0.03, mat:mat.spandrel});
+      // window strip, bay by bay
+      for(let b=0; b<BAYS; b++){
+        const cx = -PLAN/2 + CORNER + BAY_W*(b+0.5);
+        const inner = BAY_W - 0.62;                      // minus pier width
+        const winY = y0 + SPAND_H + WIN_H/2;
+        const pw = inner * 0.22;                         // each white infill panel
+        const sideGlass = (inner - 2*pw) / 2;            // flanking glazing
+        // glass on outer edges, two white panels paired in the centre (photo ref)
+        items.push({w:sideGlass, h:WIN_H, d:0.10, along:cx - pw - sideGlass/2,
+                    up:winY, out:0.02, mat:mat.glass});
+        items.push({w:sideGlass, h:WIN_H, d:0.10, along:cx + pw + sideGlass/2,
+                    up:winY, out:0.02, mat:mat.glass});
+        items.push({w:pw, h:WIN_H, d:0.13, along:cx - pw/2,
+                    up:winY, out:0.035, mat:mat.whitePanel});
+        items.push({w:pw, h:WIN_H, d:0.13, along:cx + pw/2,
+                    up:winY, out:0.035, mat:mat.whitePanel});
+      }
+    }
+    // ribbed vertical piers between bays, full height of the shaft
+    for(let b=1; b<BAYS; b++){
+      const cx = -PLAN/2 + CORNER + BAY_W*b;
+      items.push({w:0.62, h:RES_H + CROWN_H, d:0.30, along:cx,
+                  up:PODIUM_H + (RES_H+CROWN_H)/2, out:0.10, mat:mat.pier});
+    }
+    // solid corner columns
+    for(const s of [-1,1]){
+      items.push({w:CORNER*1.15, h:RES_H + CROWN_H, d:0.30, along:s*(PLAN/2 - CORNER/2),
+                  up:PODIUM_H + (RES_H+CROWN_H)/2, out:0.10, mat:mat.pier});
+    }
+    // ---- crown: plant level with row of small dark openings ----
+    const cy = PODIUM_H + RES_H + CROWN_H/2;
+    items.push({w:PLAN - CORNER*2, h:CROWN_H, d:0.12,
+                along:0, up:cy, out:0.05, mat:mat.pier});
+    const openings = 10, ow = 0.78, gap = (PLAN - CORNER*2)/openings;
+    for(let i=0;i<openings;i++){
+      const cx = -PLAN/2 + CORNER + gap*(i+0.5);
+      items.push({w:ow, h:1.25, d:0.10, along:cx, up:cy, out:0.09, mat:mat.dark});
+    }
+    onFourSides(g, items);
+
+    // parapet, roof furniture, mast — as in the aerial photo
+    box(g, PLAN+0.4, 0.75, PLAN+0.4, 0, ROOF_Y+0.37, 0, mat.pierDk);
+    box(g, 6.5, 1.8, 5.5, 2.2, ROOF_Y+1.35, -2.5, mat.pierDk);      // plant box
+    for(const [w,d,z] of [[PLAN-1,0.07, PLAN/2-0.5],[PLAN-1,0.07,-(PLAN/2-0.5)]]){
+      box(g, w, 0.07, d, 0, ROOF_Y+1.5, z, mat.metal, false);        // rail hint
+    }
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,17,8), mat.metal);
+    mast.position.set(1.6, ROOF_Y+9.1, 0.8); mast.castShadow = true; g.add(mast);
+    for(let i=0;i<3;i++) box(g, 1.5, 0.06, 0.06, 1.6, ROOF_Y+5+i*4.4, 0.8, mat.metal, false);
+
+    // ================= podium & entrance (photo reference: image 3) =================
+    // open pilotis: perimeter columns
+    for(let b=0; b<=BAYS; b++){
+      const cx = -PLAN/2 + CORNER + BAY_W*Math.min(b,BAYS) - (b===0?CORNER:0)*0; // pier lines
+    }
+    const colXs = [];
+    for(let b=0; b<=BAYS; b++) colXs.push(-PLAN/2 + CORNER + BAY_W*b);
+    colXs[0] = -PLAN/2 + 0.5; colXs[BAYS] = PLAN/2 - 0.5;
+    colXs.forEach(cx=>{
+      box(g, 0.6, PILOTI_H, 0.6, cx, PILOTI_H/2,  PLAN/2 - 0.35, mat.pier);
+      box(g, 0.6, PILOTI_H, 0.6, cx, PILOTI_H/2, -(PLAN/2 - 0.35), mat.pier);
+      box(g, 0.6, PILOTI_H, 0.6,  PLAN/2 - 0.35, PILOTI_H/2, cx, mat.pier);
+      box(g, 0.6, PILOTI_H, 0.6, -(PLAN/2 - 0.35), PILOTI_H/2, cx, mat.pier);
+    });
+    // recessed dark core + lobby glazing at ground
+    box(g, PLAN-5, PILOTI_H, PLAN-5, 0, PILOTI_H/2, 0, mat.dark);
+    box(g, 6.5, 2.9, 0.15, 0, 1.45, (PLAN-5)/2 + 0.03, mat.glassMezz);
+
+    // mezzanine band: edge beams, pink panels, glazing (like image 3)
+    const mez = [];
+    mez.push({w:PLAN, h:0.7, d:0.25, along:0, up:PILOTI_H + 0.35, out:0.12, mat:mat.pier});     // deck edge beam
+    mez.push({w:PLAN-1.2, h:1.5, d:0.18, along:0, up:PILOTI_H + 0.7 + 0.75, out:0.06, mat:mat.pink});
+    mez.push({w:PLAN-1.2, h:2.1, d:0.14, along:0, up:PILOTI_H + 2.2 + 1.05, out:0.04, mat:mat.glassMezz});
+    mez.push({w:PLAN,     h:0.7, d:0.25, along:0, up:PODIUM_H - 0.35, out:0.12, mat:mat.pier}); // top edge beam
+    // mullions across the mezz glazing
+    for(let i=0;i<9;i++){
+      const cx = -PLAN/2 + 1.2 + i*((PLAN-2.4)/8);
+      mez.push({w:0.12, h:2.1, d:0.16, along:cx, up:PILOTI_H + 2.2 + 1.05, out:0.05, mat:mat.pier});
+    }
+    onFourSides(g, mez);
+
+    // walkway deck + stair + screen wall on the entrance side (+Z)
+    const deckY = PILOTI_H;                                     // deck level
+    box(g, 12, 0.45, 7.5, 1.5, deckY - 0.22, PLAN/2 + 3.75, mat.deck);            // deck slab
+    box(g, 12, 1.05, 0.22, 1.5, deckY + 0.5, PLAN/2 + 7.4, mat.deck);             // parapet
+    box(g, 0.22, 1.05, 7.3, 7.4, deckY + 0.5, PLAN/2 + 3.75, mat.deck);
+    // perforated screen-block wall (image 3, foreground)
+    const scr = box(g, 4.4, 1.6, 0.22, -2.6, deckY + 0.8, PLAN/2 + 7.4, mat.screen);
+    for(let i=0;i<8;i++) for(let j=0;j<3;j++)
+      box(g, 0.28, 0.28, 0.26, -2.6 - 1.85 + i*0.53, deckY + 0.35 + j*0.53, PLAN/2 + 7.4, mat.dark, false);
+    // broad stair descending from the deck
+    const steps = 12, stepH = deckY/steps, stepD = 0.62;
+    for(let i=0;i<steps;i++){
+      box(g, 4.4, stepH, stepD, -4.6, deckY - stepH*(i+0.5), PLAN/2 + 7.5 + 0.3 + i*stepD, mat.deck);
+    }
+    box(g, 0.14, 0.95, steps*stepD, -6.85, deckY*0.55, PLAN/2 + 7.8 + steps*stepD/2 - 0.3, mat.metal, false);
+    box(g, 0.14, 0.95, steps*stepD, -2.35, deckY*0.55, PLAN/2 + 7.8 + steps*stepD/2 - 0.3, mat.metal, false);
+    // blue canopies tucked under the deck (nursery frontage in the photo)
+    for(const [x,z,rot] of [[-2.5, PLAN/2 + 1.2, 0.1],[4.5, PLAN/2 + 1.4, 0.12]]){
+      const a = box(g, 4.2, 0.12, 2.0, x, 2.9, z, mat.awning);
+      a.rotation.x = rot;
+    }
+    return g;
+  }
+
+  // ================= 2016 reclad tower (photo reference: image 2) =================
+  function build2016(){
+    const g = new THREE.Group();
+    const COLS = 6;
+    const CW = (PLAN - 1.8)/COLS;
+
+    box(g, PLAN, ROOF_Y, PLAN, 0, ROOF_Y/2, 0, mat.cladDk);
+
+    const items = [];
+    for(let f=0; f<RES_FLOORS+1; f++){
+      const y0 = PODIUM_H + f*FLOOR_H;
+      // horizontal light panel band
+      items.push({w:PLAN-1.8, h:1.0, d:0.14, along:0, up:y0+0.5, out:0.05, mat:mat.clad});
+      for(let c=0; c<COLS; c++){
+        const cx = -PLAN/2 + 0.9 + CW*(c+0.5);
+        items.push({w:CW*0.62, h:FLOOR_H-1.0, d:0.10, along:cx,
+                    up:y0 + 1.0 + (FLOOR_H-1.0)/2, out:0.03, mat:mat.glass16});
+      }
+    }
+    for(let c=0; c<=COLS; c++){
+      const cx = -PLAN/2 + 0.9 + CW*c;
+      items.push({w:0.42, h:RES_H + FLOOR_H, d:0.30, along:cx,
+                  up:PODIUM_H + (RES_H+FLOOR_H)/2, out:0.12, mat:mat.clad});
+    }
+    for(const s of [-1,1]){
+      items.push({w:1.0, h:RES_H + FLOOR_H, d:0.32, along:s*(PLAN/2 - 0.5),
+                  up:PODIUM_H + (RES_H+FLOOR_H)/2, out:0.13, mat:mat.clad});
+    }
+    onFourSides(g, items);
+
+    // crown fins
+    const finH = 3.4;
+    for(let side=0; side<4; side++){
+      for(let c=0; c<=COLS; c++){
+        const along = -PLAN/2 + 0.9 + CW*c;
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.42, finH, 0.28), mat.clad);
+        fin.castShadow = true;
+        const out = PLAN/2 + 0.16, y = ROOF_Y + finH/2 - 0.5;
+        if(side===0){ fin.position.set(along, y,  out); fin.rotation.x =  0.15; }
+        if(side===1){ fin.position.set(along, y, -out); fin.rotation.x = -0.15; }
+        if(side===2){ fin.position.set( out, y, along); fin.rotation.y = Math.PI/2; fin.rotation.x =  0.15; }
+        if(side===3){ fin.position.set(-out, y, along); fin.rotation.y = Math.PI/2; fin.rotation.x = -0.15; }
+        g.add(fin);
+      }
+    }
+    box(g, PLAN-2, 1.0, PLAN-2, 0, ROOF_Y+0.5, 0, mat.cladDk);
+
+    // podium: enclosed community levels + entrance canopy
+    const pod = [];
+    pod.push({w:PLAN-2, h:MEZZ_H, d:0.2, along:0, up:PILOTI_H + MEZZ_H/2, out:0.06, mat:mat.cladDk});
+    pod.push({w:PLAN-2, h:2.6, d:0.22, along:0, up:1.6, out:0.08, mat:mat.glass16});
+    onFourSides(g, pod);
+    box(g, 8.5, 0.3, 4.6, 0, 3.4, PLAN/2 + 2.3, mat.clad);
+    box(g, 0.26, 3.25, 0.26, -3.6, 1.7, PLAN/2 + 4.1, mat.cladDk);
+    box(g, 0.26, 3.25, 0.26,  3.6, 1.7, PLAN/2 + 4.1, mat.cladDk);
+    return g;
+  }
+
+  const tower1974 = build1974();
+  const tower2016 = build2016();
+  tower2016.visible = false;
+  scene.add(tower1974, tower2016);
+
+  // Orbit target: geometric centre of the tower assembly (podium stairs/deck
+  // extend asymmetrically — origin is not the visual centre).
+  const towerBox = new THREE.Box3();
+  function orbitTarget(){
+    scene.updateMatrixWorld(true);
+    towerBox.makeEmpty();
+    towerBox.setFromObject(tower1974);
+    towerBox.union(new THREE.Box3().setFromObject(tower2016));
+    const c = new THREE.Vector3();
+    towerBox.getCenter(c);
+    return new THREE.Vector3(c.x, ROOF_Y * 0.44, c.z);
+  }
+
+  // ================= context =================
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(340, 48), mat.grass);
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+  const apron = new THREE.Mesh(new THREE.CircleGeometry(36, 40), mat.path);
+  apron.rotation.x = -Math.PI/2; apron.position.y = 0.02; apron.receiveShadow = true; scene.add(apron);
+
+  [[52,10,54,-16,0.35],[50,10,-32,52,1.15],[46,10,-58,-30,-0.5]].forEach(a=>{
+    const b = new THREE.Mesh(new THREE.BoxGeometry(a[0], 9.5, a[1]), mat.lowBlock);
+    b.position.set(a[2], 4.75, a[3]); b.rotation.y = a[4];
+    b.castShadow = true; b.receiveShadow = true; scene.add(b);
+  });
+  // simple trees, echoing the leafy foreground of the photos
+  for(let i=0;i<26;i++){
+    const ang = Math.random()*Math.PI*2, r = 28 + Math.random()*70;
+    const x = Math.cos(ang)*r, z = Math.sin(ang)*r;
+    if(Math.abs(x)<16 && z>8 && z<28) continue;              // keep the entrance clear
+    const h = 5+Math.random()*4;
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.3,h*0.45,6), mat.trunk);
+    t.position.set(x, h*0.22, z); t.castShadow = true; scene.add(t);
+    const c = new THREE.Mesh(new THREE.SphereGeometry(h*0.42, 8, 6), mat.tree);
+    c.position.set(x, h*0.62, z); c.scale.y = 1.15; c.castShadow = true; scene.add(c);
+  }
+
+  // ================= orbit controls =================
+  const target = orbitTarget();
+  let theta = 0.35, phi = 1.24, radius = 155;
+  const RMIN = 45, RMAX = 420;
+  let dragging=false, px=0, py=0, pinch=0;
+  const rotateBox = document.getElementById('autorotate');
+  const prm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(prm) rotateBox.checked = false;
+
+  function applyCamera(){
+    phi = Math.max(0.35, Math.min(1.52, phi));
+    radius = Math.max(RMIN, Math.min(RMAX, radius));
+    camera.position.set(
+      target.x + radius*Math.sin(phi)*Math.sin(theta),
+      target.y + radius*Math.cos(phi),
+      target.z + radius*Math.sin(phi)*Math.cos(theta));
+    camera.lookAt(target);
+  }
+
+  // Pan projection so the orbit target sits in the gap between top-corner overlay cards.
+  function applyUiOffset(w, h){
+    const card = document.querySelector('.card');
+    const trib = document.querySelector('.tributes');
+    if(!card || !trib){ camera.clearViewOffset(); return; }
+    const cardR = card.getBoundingClientRect();
+    const tribR = trib.getBoundingClientRect();
+    // Mobile: tributes panel drops to bottom — no horizontal inset to balance.
+    if(tribR.top > cardR.bottom + 16){ camera.clearViewOffset(); return; }
+    const visualCx = (cardR.right + tribR.left) * 0.5;
+    const shift = visualCx - w * 0.5;
+    if(Math.abs(shift) > 0.5) camera.setViewOffset(w, h, shift, 0, w, h);
+    else camera.clearViewOffset();
+  }
+  canvas.addEventListener('pointerdown', e=>{dragging=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId)});
+  canvas.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    theta -= (e.clientX-px)*0.005; phi -= (e.clientY-py)*0.004;
+    px=e.clientX; py=e.clientY;
+  });
+  canvas.addEventListener('pointerup', ()=>dragging=false);
+  canvas.addEventListener('pointercancel', ()=>dragging=false);
+  canvas.addEventListener('wheel', e=>{e.preventDefault(); radius *= (1+Math.sign(e.deltaY)*0.08)},{passive:false});
+  canvas.addEventListener('touchmove', e=>{
+    if(e.touches.length===2){
+      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      if(pinch) radius *= pinch/d; pinch=d;
+    }
+  },{passive:true});
+  canvas.addEventListener('touchend', ()=>pinch=0);
+
+  // ================= building history expand =================
+  const historyBtn = document.getElementById('historyToggle');
+  const historyPanel = document.getElementById('historyPanel');
+  historyBtn.addEventListener('click', () => {
+    const open = historyBtn.getAttribute('aria-expanded') === 'true';
+    historyBtn.setAttribute('aria-expanded', String(!open));
+    historyPanel.classList.toggle('hidden', open);
+  });
+
+  // ================= tributes: sign in + floating hearts =================
+  const heartsLayer = document.getElementById('hearts');
+  const HEART_PATH = "M50 88 C36 76 12 60 5 42 C-1 26 8 10 24 8 C34 6.6 44 11 50 19 C56 11 66 6.6 76 8 C92 10 101 26 95 42 C88 60 64 76 50 88 Z";
+  const GREENS = ['#0f8148','#15995a','#0b6b3c','#1a8f57'];
+
+  const seeded = [
+    {name:'W11',              text:'Forever in our hearts'},
+    {name:'London',           text:'72, never forgotten'},
+    {name:'Neighbour',        text:'Rest in peace'},
+    {name:'Ladbroke Grove',   text:'Always remembered'},
+    {name:'A friend',         text:'Green for Grenfell'},
+    {name:'Community',        text:'Love to all the families'},
+    {name:'Visitor',          text:'You are not forgotten'},
+    {name:'North Ken',        text:'Together, always'},
+    {name:'A resident',       text:'Thinking of everyone who called this tower home'},
+    {name:'From W10',         text:'Your memory lives on in this community'},
+    {name:'Someone nearby',   text:'We hold you close on quiet afternoons like this'},
+    {name:'A passer-by',      text:'Justice and peace for all who were lost that night'},
+    {name:'Local family',     text:'Our hearts are with every family still grieving'},
+    {name:'An old neighbour', text:'The tower stood here a long time. We remember'},
+    {name:'School parent',    text:'Teaching our children to remember with kindness'},
+    {name:'Volunteer',        text:'Still here. Still caring. Still saying their names'},
+    {name:'RBKC',             text:'North Kensington remembers. We always will'},
+    {name:'A cousin',         text:'Gone from sight but never from our thoughts'},
+    {name:'Westway',          text:'Walking past each day and carrying you with us'},
+    {name:'Latimer',          text:'For every family who waited and still waits'},
+    {name:'A nurse',          text:'Caring does not end when the headlines fade away'},
+    {name:'Grandparent',      text:'We tell the young ones about the lives that mattered'},
+    {name:'Youth worker',     text:'This place holds memory. We add ours gently'},
+    {name:'Faith group',      text:'Prayers for peace for all who loved this building'},
+  ];
+  const pool = seeded.slice();
+
+  function spawnHeart(entry, side){
+    const el = document.createElement('div');
+    el.className = 'tf';
+    const size = 124 + Math.random()*52;             // 124–176px (slightly larger)
+    const dur  = 8 + Math.random()*3.5;              // 8–11.5s rise (original timing)
+    const sway = 18 + Math.random()*22;
+    el.style.setProperty('--dur', dur.toFixed(2)+'s');
+    // spawn in the margins so the tower stays clear
+    const leftPct = side==='L' ? (3 + Math.random()*15) : (78 + Math.random()*15);
+    el.style.left = leftPct + 'vw';
+
+    const swayEl = document.createElement('div');
+    swayEl.className = 'tf-sway';
+    swayEl.style.setProperty('--sway', sway.toFixed(0)+'px');
+    swayEl.style.setProperty('--swaydur', (2.8+Math.random()*1.6).toFixed(2)+'s');
+
+    const pop = document.createElement('div');
+    pop.className = 'tf-pop';
+    pop.style.setProperty('--sz', size.toFixed(0)+'px');
+    const col = GREENS[Math.floor(Math.random()*GREENS.length)];
+    pop.innerHTML =
+      '<svg viewBox="0 0 100 94" aria-hidden="true"><path d="'+HEART_PATH+'" fill="'+col+'"/></svg>';
+    const copy = document.createElement('div');
+    copy.className = 'tf-copy';
+    const span = document.createElement('span');
+    span.textContent = entry.text;
+    const small = document.createElement('small');
+    small.textContent = '— ' + entry.name;
+    copy.appendChild(span);
+    copy.appendChild(small);
+    pop.appendChild(copy);
+    // pop animationend bubbles — stop it from ending the rise early
+    pop.addEventListener('animationend', e => e.stopPropagation());
+
+    swayEl.appendChild(pop);
+    el.appendChild(swayEl);
+    heartsLayer.appendChild(el);
+    void el.offsetWidth;
+    el.addEventListener('animationend', (e) => {
+      if (e.target !== el) return;
+      if (e.animationName !== 'rise' && e.animationName !== 'fadeonly') return;
+      el.remove();
+    });
+    setTimeout(() => { if (el.parentNode) el.remove(); }, dur*1000 + 800);
+  }
+
+  let flip = false, seedIdx = 0;
+  const SPAWN_MS = 2700;
+  // Stagger several seeded tributes at open so the scene feels alive immediately.
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => {
+      if (document.hidden || heartsLayer.childElementCount > 9) return;
+      flip = !flip;
+      spawnHeart(pool[seedIdx % pool.length], flip ? 'L' : 'R');
+      seedIdx++;
+    }, 500 + i * SPAWN_MS);
+  }
+  setTimeout(() => {
+    setInterval(()=>{
+      if(document.hidden) return;
+      if(heartsLayer.childElementCount > 9) return;
+      flip = !flip;
+      spawnHeart(pool[seedIdx % pool.length], flip ? 'L' : 'R');
+      seedIdx++;
+    }, SPAWN_MS);
+  }, 500 + 5 * SPAWN_MS);
+
+  // ---- mock sign-in flow (demo only, in-memory) ----
+  const signinBox = document.getElementById('signin');
+  const composeBox = document.getElementById('compose');
+  const nameInput = document.getElementById('name');
+  const msgInput  = document.getElementById('msg');
+  const chars     = document.getElementById('chars');
+  let user = null;
+
+  document.getElementById('signinBtn').addEventListener('click', ()=>{
+    const n = nameInput.value.trim();
+    if(!n){ nameInput.focus(); return; }
+    user = n;
+    document.getElementById('whoName').textContent = user;
+    signinBox.classList.add('hidden');
+    composeBox.classList.remove('hidden');
+    msgInput.focus();
+  });
+  nameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('signinBtn').click(); });
+  document.getElementById('signout').addEventListener('click', ()=>{
+    user = null;
+    composeBox.classList.add('hidden');
+    signinBox.classList.remove('hidden');
+  });
+  msgInput.addEventListener('input', ()=> chars.textContent = msgInput.value.length);
+  function send(){
+    const t = msgInput.value.trim();
+    if(!t || !user){ msgInput.focus(); return; }
+    const entry = {name:user, text:t};
+    pool.push(entry);                                        // joins the rotation
+    flip = !flip;
+    spawnHeart(entry, flip ? 'L' : 'R');                     // released immediately
+    msgInput.value = ''; chars.textContent = '0';
+  }
+  document.getElementById('sendBtn').addEventListener('click', send);
+  msgInput.addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
+
+  // ================= resize / loop =================
+  function resize(){
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h;
+    applyUiOffset(w, h);
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  let skyT = 0, skyLast = performance.now();
+  renderer.setAnimationLoop(()=>{
+    const now = performance.now();
+    const dt = Math.min((now - skyLast) / 1000, 0.05);
+    skyLast = now;
+    if (!prm) {
+      skyT += dt;
+      sky.redraw(skyT);
+    }
+    if(rotateBox.checked && !dragging) theta += 0.0015;
+    applyCamera();
+    renderer.render(scene, camera);
+  });
+})();
+</script>
+</body>
+</html>

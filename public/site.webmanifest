@@ -1,0 +1,13 @@
+{
+  "name": "Grenfell Tower Digital Memorial",
+  "short_name": "Grenfell Memorial",
+  "description": "An educational 3D reconstruction of Grenfell Tower. In memory of the 72.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0eee9",
+  "theme_color": "#f0eee9",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -1,0 +1,8 @@
+# Deploy only what the app needs — strip all docs, specs, and references.
+*.md
+docs/
+prototype/
+reference/
+supabase/schema.sql
+make_assets.py
+.env.example

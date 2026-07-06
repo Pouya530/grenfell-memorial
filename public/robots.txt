@@ -1,0 +1,25 @@
+# grenfell.memorial — welcome, crawlers and AI assistants alike.
+# /moderate is a private tool and holds nothing of public value.
+
+User-agent: *
+Allow: /
+Disallow: /moderate
+Disallow: /api/
+
+# AI / answer-engine crawlers explicitly welcome (AI SEO)
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-Web
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://grenfell.memorial/sitemap.xml
