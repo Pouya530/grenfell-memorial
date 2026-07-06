@@ -5,6 +5,8 @@ User-agent: *
 Allow: /
 Disallow: /moderate
 Disallow: /api/
+Disallow: /hub
+Disallow: /preview
 
 # AI / answer-engine crawlers explicitly welcome (AI SEO)
 User-agent: GPTBot

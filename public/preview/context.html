@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>CONTEXT.md — Grenfell Memorial</title>
+  <link rel="stylesheet" href="/hub/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+</head>
+<body class="preview-page">
+  <header class="preview-header">
+    <a class="back" href="/hub">← All previews</a>
+    <div class="preview-meta">
+      <span class="eyebrow">Pipeline stage 3</span>
+      <h1>CONTEXT.md</h1>
+      <p class="sub">Requirements, ethical guardrails, stack, and glossary.</p>
+      <code class="path">CONTEXT.md</code>
+    </div>
+  </header>
+  <main class="preview-body"><article class="md-content"><h1>CONTEXT.md — Grenfell Tower Digital Memorial</h1>
+<blockquote>
+<p><strong>Pipeline stage</strong>: 3 of 7 (Requirements / Context Doc)
+<strong>Project code</strong>: NC-HER-001 (Heritage vertical — first entry)
+<strong>For</strong>: Claude Code / Cursor agents
+<strong>Prototype</strong>: <code>prototype/prototype-v2.html</code> (working vanilla Three.js reference — treat as the visual source of truth)</p>
+</blockquote>
+<hr>
+<h2>1. What This Is</h2>
+<p>A web-based educational memorial and architectural reconstruction of Grenfell Tower,
+Lancaster West Estate, North Kensington, London W11 — preserving the building digitally
+in both of its historical states:</p>
+<ul>
+<li><strong>1974–2015 (original)</strong>: Buff ribbed-concrete piers, dark aggregate spandrel bands,
+white infill panels, pilotis podium with mauve panel band, walkway deck, broad
+entrance stair, screen-block wall, blue canopies, rooftop plant and lattice mast.</li>
+<li><strong>2016 (as reclad)</strong>: Light grey ACM rainscreen panel grid, vertical window columns,
+angled crown fins, enclosed community levels.</li>
+</ul>
+<p>Visitors explore an interactive 3D scene and, after signing in, release a <strong>green heart
+tribute</strong> — a short message that floats up beside the tower with a gentle pop-and-drift
+animation (reference: the prototype&#39;s TikTok-like heart release). Tributes are
+human-moderated before they appear publicly, and approved tributes appear live for all
+visitors via realtime subscription.</p>
+<p><strong>This is not a commercial product.</strong> No ads, no monetisation, no gamification, no
+engagement metrics. Sustainability comes from grants / heritage funding (natural
+adjacency: Nocturnal Cloud&#39;s Khalili Foundation cultural-heritage relationship).</p>
+<hr>
+<h2>2. Why It Matters (and Why Now)</h2>
+<ul>
+<li>72 people lost their lives on 14 June 2017. The tower is a site of national memory.</li>
+<li>The physical structure is being carefully dismantled. Once it is gone, digital
+reconstruction becomes one of the primary ways future generations experience the
+building&#39;s architecture and understand the story of the refurbishment.</li>
+<li>Rich source material exists: RBKC planning portal (2012–2016 refurbishment drawings,
+elevations, sections), extensive archival photography, inquiry survey data, and
+Forensic Architecture&#39;s media-sourced 3D investigation model — proving the
+photogrammetry approach works for this building.</li>
+</ul>
+<h2>3. Ethical Guardrails (NON-NEGOTIABLE — read before writing any code)</h2>
+<ol>
+<li><strong>Community first.</strong> Before any public launch, engagement with Grenfell United and
+the Grenfell Tower Memorial Commission is required. The build proceeds as a private
+prototype until that conversation happens. No marketing, no social posts, no press.</li>
+<li><strong>Moderation before visibility.</strong> No tribute is ever publicly rendered without human
+approval. There is no &quot;post first, review later&quot; mode. Ever.</li>
+<li><strong>Restraint in design.</strong> Documentary, archival tone. The green heart (the community&#39;s
+own symbol) is the single expressive element. No fire imagery, no red/orange palette
+accents, no dramatisation, no sound effects.</li>
+<li><strong>Data minimisation.</strong> Sign-in exists solely to attribute and rate-limit tributes.
+Collect display name + email (via magic link) and nothing else. No analytics beyond
+privacy-respecting page counts. No tracking pixels.</li>
+<li><strong>The memorial line is permanent.</strong> &quot;In memory of the 72 people who lost their
+lives, 14 June 2017&quot; appears on every view, always.</li>
+<li><strong>Accuracy with honesty.</strong> Geometry is labelled &quot;approximate&quot; until validated against
+planning drawings. Never present the model as survey-grade unless it is.</li>
+</ol>
+<h2>4. Users</h2>
+<table>
+<thead>
+<tr>
+<th>User</th>
+<th>Need</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Students / educators</td>
+<td>Understand the building&#39;s architecture and the significance of the 2016 recladding</td>
+</tr>
+<tr>
+<td>Community &amp; diaspora</td>
+<td>A quiet place to leave a tribute, from anywhere in the world</td>
+</tr>
+<tr>
+<td>Researchers / journalists</td>
+<td>Accurate massing + era comparison as reference material</td>
+</tr>
+<tr>
+<td>Moderators (trusted, small team)</td>
+<td>Fast, humane review queue for incoming tributes</td>
+</tr>
+</tbody></table>
+<h2>5. Product Definition (MVP)</h2>
+<ol>
+<li><strong>3D scene</strong> — the prototype&#39;s reconstruction ported to React Three Fiber:
+era toggle (1974 / 2016), slow auto-orbit, drag/pinch controls, blue sky with soft
+clouds, warm afternoon light, estate context (finger blocks, trees, entrance clear).</li>
+<li><strong>Tribute system</strong> — Supabase magic-link auth → compose (≤60 chars) → pending →
+moderator approval → enters the floating rotation for all visitors (Realtime).</li>
+<li><strong>Heart animation</strong> — pop-in with overshoot, upward drift with sway in the left/right
+margins (tower stays clear), fade at top, max ~9 concurrent, reduced-motion fallback.</li>
+<li><strong>Info layer</strong> — the archival record card (facts, era toggle) and memorial line,
+styled exactly as the prototype.</li>
+<li><strong>Moderation console</strong> — <code>/moderate</code> route, role-gated: queue, approve/reject,
+audit trail.</li>
+</ol>
+<h3>Explicitly OUT of scope for MVP</h3>
+<ul>
+<li>Photogrammetry / glTF facade detail (Phase 2 — see SPEC §11)</li>
+<li>Interior reconstruction (likely never — private homes; requires community guidance)</li>
+<li>Public API, embeds, VR/AR</li>
+<li>Any timeline or narrative of the fire itself (requires community partnership first)</li>
+</ul>
+<h2>6. Tech Stack (locked)</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Choice</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Framework</td>
+<td>Next.js 14+ App Router, TypeScript strict</td>
+<td>House standard</td>
+</tr>
+<tr>
+<td>3D</td>
+<td>React Three Fiber + drei + three</td>
+<td>Port prototype geometry 1:1</td>
+</tr>
+<tr>
+<td>Styling</td>
+<td>Tailwind + CSS variables from prototype palette</td>
+<td><code>--paper #f0eee9</code>, <code>--ink #22252a</code>, <code>--heart #0f8148</code>, <code>--line #c9c5bc</code>, <code>--muted #6d6a63</code></td>
+</tr>
+<tr>
+<td>Auth / DB / Realtime</td>
+<td>Supabase (magic link only — no passwords, no OAuth for MVP)</td>
+<td>RLS everywhere</td>
+</tr>
+<tr>
+<td>Validation</td>
+<td>Zod at every boundary</td>
+<td></td>
+</tr>
+<tr>
+<td>Hosting</td>
+<td>Vercel</td>
+<td></td>
+</tr>
+<tr>
+<td>Profanity pre-filter</td>
+<td><code>obscenity</code> npm package in an Edge Function (pre-screen only — humans still approve)</td>
+<td>Free, no API cost</td>
+</tr>
+</tbody></table>
+<p><strong>API cost model</strong>: £0/month at MVP scale (Supabase free tier: 50k MAU auth,
+500MB DB, 2M Realtime messages). Vercel Hobby → Pro (£16/mo) only if traffic demands.</p>
+<h2>7. Source Material for Accuracy Work</h2>
+<ul>
+<li>Prototype geometry constants (PLAN 21.9m, FLOOR_H 2.64m, 20 residential floors,
+crown 2.7m, podium 8.8m ≈ 67m total) — carry into <code>lib/tower-dimensions.ts</code>.</li>
+<li>RBKC planning portal refs for the 2012–2016 refurbishment (elevations/sections) —
+Phase 2 validation source.</li>
+<li>Three user-supplied reference photos (aerial 1974 state, 2016 reclad, podium/entrance
+detail) — stored in <code>reference/</code> (not committed publicly if licence unclear).</li>
+</ul>
+<h2>8. Domain Glossary</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Pilotis</td>
+<td>Ground-level support columns leaving the ground floor open</td>
+</tr>
+<tr>
+<td>Spandrel</td>
+<td>The band of wall between window heads and the sill above</td>
+</tr>
+<tr>
+<td>ACM</td>
+<td>Aluminium composite material — the 2016 rainscreen cladding panels</td>
+</tr>
+<tr>
+<td>Rainscreen</td>
+<td>Outer cladding layer standing off the structural wall</td>
+</tr>
+<tr>
+<td>Crown</td>
+<td>The tower&#39;s top plant level (1974: small dark openings; 2016: angled fins)</td>
+</tr>
+<tr>
+<td>Finger blocks</td>
+<td>The low linear blocks of Lancaster West Estate around the tower</td>
+</tr>
+<tr>
+<td>Green heart</td>
+<td>The Grenfell community&#39;s symbol of remembrance</td>
+</tr>
+<tr>
+<td>Tribute</td>
+<td>A moderated ≤60-character message rendered inside a floating green heart</td>
+</tr>
+</tbody></table>
+<h2>9. Development Guidelines</h2>
+<ul>
+<li>TypeScript strict; no <code>any</code>. Zod schemas in <code>lib/schemas.ts</code> are the single source
+of truth for all data shapes.</li>
+<li>All Supabase access through typed helpers in <code>lib/supabase/</code>. Never raw client calls
+in components.</li>
+<li>3D code lives in <code>components/scene/</code>; each architectural element is its own component
+(<code>TowerShaft1974.tsx</code>, <code>Podium1974.tsx</code>, <code>Crown2016.tsx</code>, …) driven by the shared
+constants file, so drawing-based corrections in Phase 2 are one-file edits.</li>
+<li>Hearts are DOM overlay (not 3D sprites) — matches prototype; crisper text, cheaper.</li>
+<li><code>prefers-reduced-motion</code> honoured everywhere; keyboard focus visible; WCAG AA contrast.</li>
+<li>Any copy shown to users goes through <code>content/strings.ts</code> — reviewed as a whole for tone.</li>
+</ul>
+<hr>
+<p><strong>Next step</strong>: Open SPEC.md in a fresh context for the full technical specification,
+then AGENTS.md for the build roster.</p>
+</article></main>
+  <footer class="demo-footer">
+    <span>In memory of the 72 people who lost their lives, 14 June 2017.</span>
+  </footer>
+  <script>document.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));</script>
+</body>
+</html>

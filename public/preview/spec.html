@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>SPEC.md — Grenfell Memorial</title>
+  <link rel="stylesheet" href="/hub/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+</head>
+<body class="preview-page">
+  <header class="preview-header">
+    <a class="back" href="/hub">← All previews</a>
+    <div class="preview-meta">
+      <span class="eyebrow">Pipeline stage 4</span>
+      <h1>SPEC.md</h1>
+      <p class="sub">Architecture, data models, RLS, scene spec, and build order.</p>
+      <code class="path">SPEC.md</code>
+    </div>
+  </header>
+  <main class="preview-body"><article class="md-content"><h1>SPEC.md — Grenfell Tower Digital Memorial: Technical Specification</h1>
+<blockquote>
+<p><strong>Generated from</strong>: CONTEXT.md (Step 3 of Venture Pipeline)
+<strong>Purpose</strong>: Complete implementation blueprint for Claude Code in Cursor
+<strong>Stack</strong>: Next.js 14+ App Router / TypeScript strict / R3F / Supabase / Vercel
+<strong>Visual source of truth</strong>: <code>prototype/prototype-v2.html</code> — when in doubt, match it.</p>
+</blockquote>
+<hr>
+<h2>1. Architecture Overview</h2>
+<pre><code>Browser
+├── Next.js App (Vercel)
+│   ├── /            → Scene page (R3F canvas + DOM overlays)
+│   ├── /moderate    → Moderation console (role-gated, SSR)
+│   └── /api/tributes → POST (Zod-validated, pre-filtered, inserts as &#39;pending&#39;)
+├── Supabase
+│   ├── Auth         → magic link only
+│   ├── Postgres     → profiles, tributes, moderation_log (RLS on everything)
+│   ├── Realtime     → postgres_changes on tributes (status=approved)
+│   └── Edge Function→ tribute-prefilter (obscenity screen → flag, never auto-reject)
+└── Static assets    → sky texture generated at runtime (no asset pipeline in MVP)
+</code></pre>
+<p>Data flow for a tribute:
+<code>compose → POST /api/tributes → Zod → Edge prefilter (sets flagged bool) → insert status=&#39;pending&#39; → moderator approves → Realtime broadcast → heart spawns for all connected clients</code></p>
+<h2>2. File Structure</h2>
+<pre><code>app/
+  layout.tsx                 # fonts, metadata, memorial line in footer slot
+  page.tsx                   # main scene page
+  moderate/page.tsx          # moderation console (server component + client queue)
+  api/tributes/route.ts      # POST handler
+components/
+  scene/
+    MemorialScene.tsx        # Canvas, camera rig, lights, fog, sky
+    Sky.tsx                  # canvas-texture gradient + puff clouds (port from prototype)
+    Ground.tsx               # grass circle, path apron, finger blocks, trees
+    Tower1974/
+      index.tsx              # assembles shaft + podium + crown + roof
+      Shaft.tsx              # spandrel bands, window strips, white panels, piers
+      Podium.tsx             # pilotis, mezz band (pink/glazing), deck, stair, screen wall, canopies
+      Crown.tsx              # openings row, parapet, plant box, rails, mast
+    Tower2016/
+      index.tsx              # clad grid, crown fins, enclosed podium, canopy
+    CameraRig.tsx            # orbit: theta/phi/radius, damping, autorotate, pinch
+  overlay/
+    RecordCard.tsx           # archival card: facts, era toggle, orbit checkbox
+    TributePanel.tsx         # sign-in / compose states
+    MemorialLine.tsx         # permanent — imported by layout, cannot be removed by a page
+    HeartsLayer.tsx          # spawner + &lt;FloatingHeart/&gt; (DOM, CSS keyframes from prototype)
+lib/
+  tower-dimensions.ts        # ALL geometry constants (values from prototype §dimensions)
+  materials.ts               # useMemo&#39;d material palette (1974 + 2016 + context)
+  schemas.ts                 # Zod: TributeInsert, Tribute, Profile, ModerationAction
+  strings.ts                 # every user-facing string
+  supabase/
+    client.ts / server.ts    # typed clients
+    tributes.ts              # submitTribute, subscribeApproved, listQueue, review
+supabase/
+  schema.sql                 # tables + RLS + trigger (in repo, run via SQL editor or CLI)
+  functions/tribute-prefilter/index.ts
+prototype/prototype-v2.html  # reference implementation
+reference/                   # photos (gitignored)
+</code></pre>
+<h2>3. Data Models (see supabase/schema.sql for DDL)</h2>
+<p><strong>profiles</strong> — <code>id uuid PK → auth.users</code>, <code>display_name text (2–24 chars)</code>,
+<code>is_moderator boolean default false</code>, <code>created_at</code>.
+Created by trigger on auth signup; display_name set on first sign-in.</p>
+<p><strong>tributes</strong> — <code>id uuid PK</code>, <code>user_id → profiles</code>, <code>display_name text</code> (snapshot),
+<code>message text</code> (CHECK 1–60 chars), <code>status text CHECK in (&#39;pending&#39;,&#39;approved&#39;,&#39;rejected&#39;) default &#39;pending&#39;</code>, <code>flagged boolean default false</code> (prefilter hit),
+<code>created_at</code>, <code>reviewed_by uuid null</code>, <code>reviewed_at timestamptz null</code>.</p>
+<p><strong>moderation_log</strong> — <code>id</code>, <code>tribute_id</code>, <code>moderator_id</code>, <code>action (&#39;approve&#39;|&#39;reject&#39;)</code>,
+<code>note text null</code>, <code>created_at</code>. Insert-only audit trail.</p>
+<h3>RLS (the security model — implement exactly)</h3>
+<ul>
+<li><code>profiles</code>: user can select/update own row (display_name only); moderators select all.</li>
+<li><code>tributes</code>:<ul>
+<li>INSERT: authenticated, <code>user_id = auth.uid()</code>, status forced &#39;pending&#39; by trigger
+(client cannot set status), AND rate limit: reject if the user has a tribute in the
+last 10 minutes (enforced by <code>before insert</code> trigger).</li>
+<li>SELECT: anyone (including anon) can read rows where <code>status=&#39;approved&#39;</code>;
+owner can read own rows any status; moderators read all.</li>
+<li>UPDATE: moderators only, and only <code>status/reviewed_by/reviewed_at</code>.</li>
+</ul>
+</li>
+<li><code>moderation_log</code>: moderators insert + select. No update/delete for anyone.</li>
+<li>Realtime publication: <code>tributes</code> filtered <code>status=eq.approved</code> client-side; RLS
+guarantees pending rows never reach anon subscribers.</li>
+</ul>
+<h2>4. API Contract</h2>
+<p><code>POST /api/tributes</code>
+Body (Zod <code>TributeInsert</code>): <code>{ message: string }</code> — trim, 1–60 chars, no URLs
+(regex reject <code>https?://|www\.</code>), no email addresses.
+Flow: auth check → Zod → call Edge prefilter → insert. Returns
+<code>201 {id, status:&#39;pending&#39;}</code> | <code>400</code> validation | <code>401</code> | <code>429</code> rate-limited.
+UI copy on success (strings.ts): <em>&quot;Thank you. Your message will appear after review.&quot;</em></p>
+<h2>5. 3D Scene Specification</h2>
+<p>Port the prototype <strong>verbatim</strong> — same dimensions, same material colours, same layout.
+Key constants (already correct in prototype, move to <code>tower-dimensions.ts</code>):</p>
+<pre><code class="language-ts">PLAN 21.9  FLOOR_H 2.64  CORNER 1.05  BAYS 4 (1974) / COLS 6 (2016)
+PILOTI_H 3.8  MEZZ_H 5.0  PODIUM_H 8.8  RES_FLOORS 20  CROWN_H 2.7  ROOF_Y ≈ 64.3
+</code></pre>
+<ul>
+<li><strong>Instancing</strong>: the prototype uses individual meshes; the R3F port should use
+<code>&lt;Instances&gt;</code> (drei) for windows, white panels, spandrels and piers — one instance
+group per (material × era). Target &lt; 60 draw calls per era.</li>
+<li><strong>Era switching</strong>: both towers mounted, <code>visible</code> toggled (matches prototype; no
+remount cost). Zustand store: <code>{ era: &#39;1974&#39;|&#39;2016&#39;, autoRotate: boolean }</code>.</li>
+<li><strong>Camera</strong>: spherical orbit, phi ∈ [0.35, 1.52], radius ∈ [45, 420], initial
+(θ 0.35, φ 1.24, r 155), target y = ROOF_Y × 0.44, autorotate +0.0015 rad/frame,
+pause while dragging, damping 0.08. Disable autorotate if <code>prefers-reduced-motion</code>.</li>
+<li><strong>Sky</strong>: runtime canvas texture — vertical gradient <code>#5fa8e6 → #9cc8ee → #e8f1f8</code>
+plus 6 puff-cluster clouds (port <code>makeSky()</code> exactly). Fog <code>#e8f1f8</code> 280–750.</li>
+<li><strong>Lights</strong>: hemisphere (<code>#dcecff</code>/<code>#8c8a7c</code>, 0.85) + directional sun
+(<code>#fff0d8</code>, 1.15, pos [-95,120,85], 2048 shadow map, bias −0.0005).</li>
+<li><strong>Performance budget</strong>: 60fps on M-series laptop, ≥30fps mid-range Android.
+DPR clamp 2. No postprocessing in MVP.</li>
+</ul>
+<h2>6. Hearts Layer Specification</h2>
+<p>DOM overlay, <code>position:fixed</code>, <code>pointer-events:none</code>, above canvas, below cards.</p>
+<ul>
+<li>Spawn zones: left 3–18vw, right 78–93vw (tower always clear). Alternate sides.</li>
+<li>Composition per heart: outer <code>rise</code> (translateY 0 → −100vh+120px, opacity 0→1→1→0,
+8–11.5s linear) → middle <code>sway</code> (±18–40px translateX, ±3° rotate, 2.8–4.4s
+ease-in-out alternate) → inner <code>pop</code> (scale 0 → 1.12 @60% → 1, rotate −14°→3°→0,
+0.55s cubic-bezier(.2,1.7,.45,1)).</li>
+<li>Heart: SVG path from prototype, greens <code>#0f8148 #15995a #0b6b3c #1a8f57</code>,
+size 108–152px, drop-shadow. Message centered, 11.5px white; attribution
+<code>— name</code> in 9px @75% opacity.</li>
+<li>Rotation pool: approved tributes shuffled; one spawn / 2.7s; hard cap 9 concurrent;
+pause when <code>document.hidden</code>. A visitor&#39;s own just-approved tribute spawns
+immediately on the Realtime event.</li>
+<li>Seeded tributes (strings.ts) fill the rotation until ≥8 approved rows exist.</li>
+<li><code>prefers-reduced-motion</code>: fade in/out in place, no rise/sway/pop.</li>
+</ul>
+<h2>7. Overlay UI</h2>
+<p>Match prototype CSS exactly (palette, Georgia display / system body, 1px <code>--line</code>
+borders, archival card shadows). Components: RecordCard (top-left), TributePanel
+(top-right; bottom-right ≤760px), MemorialLine (bottom-left, permanent), hint
+(bottom-right, hidden on mobile/reduced-motion).</p>
+<p>TributePanel states: <code>signed-out → magic-link-sent → signed-in(compose)</code>.
+Compose: 60-char counter, &quot;Release a heart&quot; button, post-submit confirmation state.</p>
+<h2>8. Moderation Console (<code>/moderate</code>)</h2>
+<ul>
+<li>Server component checks <code>profiles.is_moderator</code>; non-moderators → 404 (not 403 —
+don&#39;t advertise the route).</li>
+<li>Queue: oldest first, <code>flagged</code> rows visually marked (amber left border), message +
+display_name + relative time. Approve / Reject buttons; optional note on reject.</li>
+<li>Keyboard: <code>a</code> approve, <code>r</code> reject, <code>j/k</code> navigate.</li>
+<li>Every action writes <code>moderation_log</code>. Realtime updates the queue live.</li>
+</ul>
+<h2>9. Build Order (each step = one Cursor agent session)</h2>
+<ol>
+<li>Scaffold: create-next-app, Tailwind, deps (<code>three @react-three/fiber @react-three/drei zustand zod @supabase/supabase-js @supabase/ssr obscenity</code>), palette tokens, strings.ts, tower-dimensions.ts</li>
+<li>Supabase: run schema.sql, generate types, typed clients, auth (magic link) flow</li>
+<li>Scene shell: Canvas, Sky, lights, fog, Ground, CameraRig</li>
+<li>Tower1974 (Shaft → Crown → Podium) — validate against prototype screenshots side-by-side</li>
+<li>Tower2016 + era toggle + RecordCard</li>
+<li>HeartsLayer with seeded pool</li>
+<li>TributePanel + POST route + prefilter Edge Function</li>
+<li>Realtime subscription → live heart spawns</li>
+<li>Moderation console + moderation_log</li>
+<li>A11y &amp; perf pass (reduced motion, focus, draw calls, mobile), Vercel deploy (password-protected preview until community engagement — CONTEXT §3.1)</li>
+</ol>
+<h2>10. Testing</h2>
+<ul>
+<li>Unit: schemas (message length/URL rejection), rate-limit trigger, spawn-zone maths.</li>
+<li>RLS: anon cannot read pending; user cannot set status; non-moderator cannot update.
+(Supabase CLI <code>db test</code> with pgTAP or scripted client asserts.)</li>
+<li>Visual: Playwright screenshot of each era vs stored prototype captures, diff &lt; 5%.</li>
+</ul>
+<h2>11. Phase 2 (separate spec later — do not build now)</h2>
+<p>Drawing-validated geometry from RBKC planning refs → corrections to
+tower-dimensions.ts; photogrammetry texture pass (Meshroom/RealityCapture from
+archival imagery) → glTF facade detail with Draco; annotation hotspots
+(architectural education layer); community-partnership features as guided by
+Grenfell United / Memorial Commission conversations.</p>
+</article></main>
+  <footer class="demo-footer">
+    <span>In memory of the 72 people who lost their lives, 14 June 2017.</span>
+  </footer>
+  <script>document.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
@@ -35,6 +35,13 @@ const nextConfig = {
         destination: "https://grenfell.memorial/:path*",
         permanent: true,
       },
+      { source: "/prototype", destination: "/scene.html", permanent: false },
+      { source: "/prototype/raw", destination: "/scene.html", permanent: false },
+    ];
+  },
+  async rewrites() {
+    return [
+      { source: "/preview/:id", destination: "/preview/:id.html" },
     ];
   },
 };

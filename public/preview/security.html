@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>SECURITY.md — Grenfell Memorial</title>
+  <link rel="stylesheet" href="/hub/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+</head>
+<body class="preview-page">
+  <header class="preview-header">
+    <a class="back" href="/hub">← All previews</a>
+    <div class="preview-meta">
+      <span class="eyebrow">Deploy runbook</span>
+      <h1>SECURITY.md</h1>
+      <p class="sub">Security model, headers, vulnerability reporting, controls checklist.</p>
+      <code class="path">SECURITY.md</code>
+    </div>
+  </header>
+  <main class="preview-body"><article class="md-content"><h1>SECURITY.md — Grenfell Tower Digital Memorial</h1>
+<p>This is a memorial. It will attract goodwill, and it may attract abuse.
+Security here protects three things: <strong>visitors&#39; data</strong>, <strong>the dignity of the
+tribute wall</strong>, and <strong>the integrity of the site itself</strong>.</p>
+<h2>Reporting a vulnerability</h2>
+<p>Email <strong><a href="mailto:security@grenfell.memorial">security@grenfell.memorial</a></strong> (or the repo owner directly). Please include
+steps to reproduce. We aim to acknowledge within 48 hours and fix critical issues
+within 7 days. Good-faith research is welcome; please don&#39;t test against real
+visitors&#39; data or post proof-of-concept tributes publicly.</p>
+<p>Out of scope: volumetric DoS, clickjacking on pages with no state-changing actions,
+missing best-practice headers on third-party domains we don&#39;t control.</p>
+<h2>The security model in one paragraph</h2>
+<p>The client is untrusted. Every rule that matters — tributes are pending until a human
+approves them, users can&#39;t change status, one tribute per user per 10 minutes,
+anonymous visitors can only ever read approved rows — is enforced by Postgres RLS and
+triggers in <code>supabase/schema.sql</code>, not by application code. If the entire frontend
+were replaced by a hostile client, the moderation model would still hold.</p>
+<h2>Controls checklist</h2>
+<h3>Database (implemented in schema.sql)</h3>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> RLS enabled on every table; no table readable or writable without a policy</li>
+<li><input checked="" disabled="" type="checkbox"> <code>status</code> forced to <code>&#39;pending&#39;</code> by <code>before insert</code> trigger regardless of payload</li>
+<li><input checked="" disabled="" type="checkbox"> Rate limit (10 min/user) enforced in-database, not in JS</li>
+<li><input checked="" disabled="" type="checkbox"> Moderator role changes cannot be self-granted (profiles UPDATE policy)</li>
+<li><input checked="" disabled="" type="checkbox"> No DELETE policies on tributes/moderation_log — audit trail is append-only</li>
+<li><input checked="" disabled="" type="checkbox"> <code>security definer</code> functions pin <code>search_path = public</code></li>
+</ul>
+<h3>Application</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Zod validation on every API boundary; reject URLs and email addresses in messages</li>
+<li><input disabled="" type="checkbox"> <code>SUPABASE_SERVICE_ROLE_KEY</code> used server-side only, never in <code>NEXT_PUBLIC_*</code></li>
+<li><input disabled="" type="checkbox"> Auth: magic link only — no passwords to leak, no OAuth scope creep</li>
+<li><input disabled="" type="checkbox"> <code>/moderate</code> returns 404 (not 403) to non-moderators — don&#39;t advertise the route</li>
+<li><input disabled="" type="checkbox"> Moderation console renders tribute text as text (React default) — no
+<code>dangerouslySetInnerHTML</code> anywhere in the repo (CI grep check)</li>
+<li><input disabled="" type="checkbox"> Magic-link emails via a domain with SPF + DKIM + DMARC (see DEPLOY.md) to
+prevent spoofed &quot;memorial&quot; emails</li>
+</ul>
+<h3>Headers — <code>next.config.mjs</code></h3>
+<pre><code class="language-js">const securityHeaders = [
+  { key: &quot;Strict-Transport-Security&quot;, value: &quot;max-age=63072000; includeSubDomains; preload&quot; },
+  { key: &quot;X-Frame-Options&quot;, value: &quot;DENY&quot; },
+  { key: &quot;X-Content-Type-Options&quot;, value: &quot;nosniff&quot; },
+  { key: &quot;Referrer-Policy&quot;, value: &quot;strict-origin-when-cross-origin&quot; },
+  { key: &quot;Permissions-Policy&quot;, value: &quot;camera=(), microphone=(), geolocation=(), interest-cohort=()&quot; },
+  { key: &quot;Content-Security-Policy&quot;, value: [
+      &quot;default-src &#39;self&#39;&quot;,
+      &quot;script-src &#39;self&#39; &#39;unsafe-inline&#39;&quot;,          // Next.js inline runtime; move to nonces post-MVP
+      &quot;style-src &#39;self&#39; &#39;unsafe-inline&#39;&quot;,
+      &quot;img-src &#39;self&#39; data: blob:&quot;,
+      &quot;connect-src &#39;self&#39; https://*.supabase.co wss://*.supabase.co&quot;,
+      &quot;font-src &#39;self&#39;&quot;,
+      &quot;object-src &#39;none&#39;&quot;,
+      &quot;base-uri &#39;self&#39;&quot;,
+      &quot;form-action &#39;self&#39;&quot;,
+      &quot;frame-ancestors &#39;none&#39;&quot;,
+      &quot;upgrade-insecure-requests&quot;,
+    ].join(&quot;; &quot;) },
+];
+</code></pre>
+<h3>Abuse &amp; content safety</h3>
+<ul>
+<li>Human moderation of 100% of tributes before visibility (the primary control)</li>
+<li><code>obscenity</code> prefilter flags likely-abusive content for priority review — it never
+auto-decides in either direction</li>
+<li>Rate limiting caps flood attempts at 6 tributes/user/hour; magic-link auth adds an
+email-verification cost per identity</li>
+<li>Moderator handbook (<code>docs/moderation.md</code>) covers doxxing attempts, names of real
+individuals, and coordinated abuse — when in doubt, hold and discuss</li>
+<li>If sustained targeted abuse occurs: pause new-tribute intake via a single
+<code>INTAKE_PAUSED</code> env flag (build this switch in step 7)</li>
+</ul>
+<h3>Data protection (UK GDPR)</h3>
+<ul>
+<li>Data collected: email (auth) + display name + tribute text. Nothing else. No
+analytics SDKs, no tracking pixels, no fingerprinting.</li>
+<li>Lawful basis: consent (user-initiated sign-up to leave a tribute).</li>
+<li>Right to erasure: deleting the auth user cascades profile + tributes (FKs on
+delete cascade). Document the request route on the site&#39;s privacy page.</li>
+<li>Data stays in Supabase&#39;s EU region — select <strong>eu-west</strong> at project creation.</li>
+</ul>
+<h3>Dependencies &amp; pipeline</h3>
+<ul>
+<li><code>npm audit</code> + Dependabot on the repo; lockfile committed; no postinstall scripts
+from unvetted packages (run your NodeGuard checks — this is exactly its use case)</li>
+<li>Vercel deploy protection (password) stays ON until community engagement completes</li>
+<li>Production env vars set in Vercel only — never committed; <code>.env*</code> gitignored</li>
+</ul>
+<h2>What we deliberately don&#39;t have</h2>
+<p>No ads, no third-party scripts, no cookies beyond Supabase auth, no analytics,
+no user-uploaded media, no comments/replies, no DMs. The smallest possible attack
+surface is also the most respectful product.</p>
+</article></main>
+  <footer class="demo-footer">
+    <span>In memory of the 72 people who lost their lives, 14 June 2017.</span>
+  </footer>
+  <script>document.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));</script>
+</body>
+</html>
