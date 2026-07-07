@@ -35,8 +35,10 @@ export const metadata: Metadata = {
     images: [
       {
         url: "/og-image.png",
+        secureUrl: "https://grenfell.memorial/og-image.png",
         width: 1200,
         height: 630,
+        type: "image/png",
         alt: "Grenfell Tower Digital Memorial — In memory of the 72",
       },
     ],
@@ -49,8 +51,12 @@ export const metadata: Metadata = {
     images: ["/og-image.png"],
   },
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
-    apple: "/favicon.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/site.webmanifest",
   robots: {

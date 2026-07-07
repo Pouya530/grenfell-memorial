@@ -16,7 +16,7 @@ const jsonLd = {
       "@id": "https://grenfell.memorial/#org",
       name: "Grenfell Tower Digital Memorial",
       url: "https://grenfell.memorial",
-      logo: "https://grenfell.memorial/favicon.svg",
+      logo: "https://grenfell.memorial/icon-512.png",
     },
     {
       "@type": "LandmarksOrHistoricalBuildings",

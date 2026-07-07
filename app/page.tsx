@@ -1,14 +1,5 @@
-import { AboutMemorial } from "@/components/AboutMemorial";
+import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  return (
-    <>
-      <iframe
-        src="/scene.html"
-        title="Grenfell Tower — educational 3D reconstruction"
-        className="scene-frame"
-      />
-      <AboutMemorial />
-    </>
-  );
+  redirect("/scene.html");
 }

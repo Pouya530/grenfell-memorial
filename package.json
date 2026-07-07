@@ -2,9 +2,10 @@
   "name": "grenfell-memorial",
   "private": true,
   "scripts": {
+    "generate:icons": "node scripts/generate-icons.mjs",
     "build:previews": "node scripts/build-static-previews.mjs",
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run generate:icons && next build",
     "start": "next start"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "marked": "^15.0.12",
+    "sharp": "^0.34.5",
     "typescript": "^5.6.0"
   }
 }
