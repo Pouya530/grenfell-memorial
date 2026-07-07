@@ -35,7 +35,6 @@ const nextConfig = {
         destination: "https://grenfell.memorial/:path*",
         permanent: true,
       },
-      { source: "/", destination: "/scene.html", permanent: false },
       { source: "/prototype", destination: "/scene.html", permanent: false },
       { source: "/prototype/raw", destination: "/scene.html", permanent: false },
     ];
