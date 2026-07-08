@@ -41,9 +41,7 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    return [
-      { source: "/preview/:id", destination: "/preview/:id.html" },
-    ];
+    return [];
   },
 };
 

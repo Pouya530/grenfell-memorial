@@ -1,16 +1,5 @@
-# Deploy only what the app needs — strip all docs, specs, and references.
-*.md
-**/*.md
-docs/
+# Deploy only what the live memorial needs.
 prototype/
 reference/
 supabase/
 .env.example
-make_assets.py
-AGENTS.md
-CONTEXT.md
-SPEC.md
-DEPLOY.md
-SEO.md
-SECURITY.md
-README.md
