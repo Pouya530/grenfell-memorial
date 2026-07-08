@@ -551,13 +551,39 @@
     const scr = box(g, 4.4, 1.6, 0.22, -2.6, deckY + 0.8, PLAN/2 + 7.4, mat.screen);
     for(let i=0;i<8;i++) for(let j=0;j<3;j++)
       box(g, 0.28, 0.28, 0.26, -2.6 - 1.85 + i*0.53, deckY + 0.35 + j*0.53, PLAN/2 + 7.4, mat.dark, false);
-    // broad stair descending from the deck
-    const steps = 12, stepH = deckY/steps, stepD = 0.62;
-    for(let i=0;i<steps;i++){
-      box(g, 4.4, stepH, stepD, -4.6, deckY - stepH*(i+0.5), PLAN/2 + 7.5 + 0.3 + i*stepD, mat.deck);
+    // broad stair descending from the deck (treads + risers, flush to deck edge)
+    const steps = 12;
+    const stepH = deckY / steps;
+    const stepD = 0.58;
+    const treadT = 0.14;
+    const stairW = 4.5;
+    const stairX = -4.55;
+    const deckFrontZ = PLAN/2 + 7.5;
+    const runLen = steps * stepD;
+    const slope = Math.atan2(deckY, runLen);
+
+    for(let i = 0; i < steps; i++){
+      const treadTop = deckY - stepH * i;
+      const treadZ = deckFrontZ + stepD / 2 + i * stepD;
+      box(g, stairW, treadT, stepD + 0.05, stairX, treadTop - treadT / 2, treadZ, mat.deck);
+      if(i < steps - 1){
+        box(g, stairW, stepH, 0.08, stairX, treadTop - stepH / 2, deckFrontZ + (i + 1) * stepD, mat.deck);
+      }
     }
-    box(g, 0.14, 0.95, steps*stepD, -6.85, deckY*0.55, PLAN/2 + 7.8 + steps*stepD/2 - 0.3, mat.metal, false);
-    box(g, 0.14, 0.95, steps*stepD, -2.35, deckY*0.55, PLAN/2 + 7.8 + steps*stepD/2 - 0.3, mat.metal, false);
+    box(g, stairW + 0.24, treadT, stepD + 0.3, stairX, treadT / 2, deckFrontZ + runLen - stepD * 0.2, mat.deck);
+
+    for(const sx of [stairX - stairW / 2 + 0.08, stairX + stairW / 2 - 0.08]){
+      const str = box(g, 0.12, deckY * 0.94, runLen, sx, deckY / 2, deckFrontZ + runLen / 2, mat.deck);
+      str.rotation.x = -slope;
+    }
+
+    const railH = 0.9, railLift = 0.88;
+    const railMidZ = deckFrontZ + runLen / 2;
+    const railMidY = deckY / 2 + railLift;
+    for(const rx of [-6.9, -2.2]){
+      const rail = box(g, 0.13, railH, runLen + 0.2, rx, railMidY, railMidZ, mat.metal, false);
+      rail.rotation.x = -slope;
+    }
     // blue canopies tucked under the deck (nursery frontage in the photo)
     for(const [x,z,rot] of [[-2.5, PLAN/2 + 1.2, 0.1],[4.5, PLAN/2 + 1.4, 0.12]]){
       const a = box(g, 4.2, 0.12, 2.0, x, 2.9, z, mat.awning);
