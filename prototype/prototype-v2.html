@@ -106,6 +106,7 @@
   .tributes .who b{color:var(--ink);font-weight:600}
   .tributes .who a{color:var(--muted);cursor:pointer;text-decoration:underline}
   .tributes .count{font-size:10.5px;color:var(--muted);text-align:right;margin:-4px 0 6px}
+  .tributes .msg-error{font-size:11px;color:var(--muted);margin:-2px 0 8px;line-height:1.35}
   .hidden{display:none}
 
   /* ---------- floating tribute hearts ---------- */
@@ -165,8 +166,8 @@
     .card{width:236px;padding:12px 14px}
     .card h1{font-size:19px}
     dl{display:none}
-    .tributes{top:auto;bottom:64px;right:12px;width:216px}
-    .memorial{font-size:11px}
+    .tributes{top:auto;bottom:76px;right:18px;width:216px;max-width:calc(100vw - 36px)}
+    .memorial{left:18px;font-size:11px}
   }
 </style>
 </head>
@@ -231,6 +232,7 @@
     <div class="who">Signed in as <b id="whoName"></b> · <a id="signout">sign out</a></div>
     <input type="text" id="msg" placeholder="Leave a message…" maxlength="60" autocomplete="off">
     <div class="count"><span id="chars">0</span>/60</div>
+    <p class="msg-error hidden" id="msgError" role="alert"></p>
     <button class="go" id="sendBtn">Release a heart</button>
   </div>
 </aside>
@@ -623,6 +625,8 @@
   const target = orbitTarget();
   let theta = 0.35, phi = 1.24, radius = 155;
   const RMIN = 45, RMAX = 420;
+  const WHEEL_ZOOM = 0.056;   // 30% slower than 0.08
+  const PINCH_ZOOM = 0.7;     // damp pinch zoom to 70% speed
   let dragging=false, px=0, py=0, pinch=0;
   const rotateBox = document.getElementById('autorotate');
   const prm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -660,11 +664,11 @@
   });
   canvas.addEventListener('pointerup', ()=>dragging=false);
   canvas.addEventListener('pointercancel', ()=>dragging=false);
-  canvas.addEventListener('wheel', e=>{e.preventDefault(); radius *= (1+Math.sign(e.deltaY)*0.08)},{passive:false});
+  canvas.addEventListener('wheel', e=>{e.preventDefault(); radius *= (1+Math.sign(e.deltaY)*WHEEL_ZOOM)},{passive:false});
   canvas.addEventListener('touchmove', e=>{
     if(e.touches.length===2){
       const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-      if(pinch) radius *= pinch/d; pinch=d;
+      if(pinch) radius *= Math.pow(pinch/d, PINCH_ZOOM); pinch=d;
     }
   },{passive:true});
   canvas.addEventListener('touchend', ()=>pinch=0);
@@ -719,7 +723,10 @@
     const sway = 18 + Math.random()*22;
     el.style.setProperty('--dur', dur.toFixed(2)+'s');
     // spawn in the margins so the tower stays clear
-    const leftPct = side==='L' ? (3 + Math.random()*15) : (78 + Math.random()*15);
+    const mobile = window.innerWidth <= 760;
+    const leftPct = side==='L'
+      ? (3 + Math.random()*15)
+      : (mobile ? (66 + Math.random()*12) : (78 + Math.random()*15));
     el.style.left = leftPct + 'vw';
 
     const swayEl = document.createElement('div');
@@ -784,7 +791,22 @@
   const nameInput = document.getElementById('name');
   const msgInput  = document.getElementById('msg');
   const chars     = document.getElementById('chars');
+  const msgError  = document.getElementById('msgError');
   let user = null;
+
+  const URL_OR_EMAIL = /(https?:\/\/|www\.|[^\s]+@[^\s]+\.[^\s]+)/i;
+  const PROFANITY = /\b(shit|shits|shitty|fuck|fucks|fucking|fucker|fuckers|bitch|bitches|bastard|bastards|cunt|cunts|asshole|assholes|bollocks|wanker|wankers|twat|twats|prick|pricks|slut|sluts|whore|whores|nigger|nigga|faggot|fag|retard|retards)\b/i;
+
+  function tributeMessageError(text){
+    if(URL_OR_EMAIL.test(text)) return 'Links and email addresses are not permitted.';
+    if(PROFANITY.test(text)) return 'Please keep your message respectful.';
+    return '';
+  }
+
+  function showMsgError(msg){
+    if(msg){ msgError.textContent = msg; msgError.classList.remove('hidden'); }
+    else { msgError.textContent = ''; msgError.classList.add('hidden'); }
+  }
 
   document.getElementById('signinBtn').addEventListener('click', ()=>{
     const n = nameInput.value.trim();
@@ -801,10 +823,16 @@
     composeBox.classList.add('hidden');
     signinBox.classList.remove('hidden');
   });
-  msgInput.addEventListener('input', ()=> chars.textContent = msgInput.value.length);
+  msgInput.addEventListener('input', ()=>{
+    chars.textContent = msgInput.value.length;
+    if(msgError.textContent) showMsgError(tributeMessageError(msgInput.value.trim()));
+  });
   function send(){
     const t = msgInput.value.trim();
     if(!t || !user){ msgInput.focus(); return; }
+    const err = tributeMessageError(t);
+    if(err){ showMsgError(err); msgInput.focus(); return; }
+    showMsgError('');
     const entry = {name:user, text:t};
     pool.push(entry);                                        // joins the rotation
     flip = !flip;
