@@ -256,15 +256,31 @@
 
   const scene = new THREE.Scene();
 
-  // -------- sky: blue gradient with soft drifting clouds --------
+  // -------- sky: blue gradient with soft drifting clouds (viewport aspect) --------
   const sky = (function(){
+    const CLOUD_LAYOUT = [
+      { x: 0.186, y: 0.244, s: 55, seed: 101, vx: 2.8 },
+      { x: 0.742, y: 0.176, s: 65, seed: 202, vx: 3.6 },
+      { x: 0.508, y: 0.332, s: 45, seed: 303, vx: 2.2 },
+      { x: 0.859, y: 0.420, s: 50, seed: 404, vx: 3.1 },
+      { x: 0.117, y: 0.459, s: 40, seed: 505, vx: 2.5 },
+      { x: 0.391, y: 0.146, s: 50, seed: 606, vx: 3.4 },
+    ];
     const c = document.createElement('canvas');
-    c.width = 1024; c.height = 1024;
     const ctx = c.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, 0, 1024);
-    grad.addColorStop(0.0, '#5fa8e6');
-    grad.addColorStop(0.5, '#9cc8ee');
-    grad.addColorStop(1.0, '#e8f1f8');
+    let W = 1024, H = 1024, grad, tex, clouds = [], portrait = false;
+
+    function skyDimensions(viewW, viewH){
+      const aspect = viewW / viewH;
+      const base = 1024;
+      let w, h;
+      if(aspect >= 1){ h = base; w = Math.round(base * aspect); }
+      else { w = base; h = Math.round(base / aspect); }
+      const maxDim = 1536;
+      if(w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+      if(h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+      return { W: w, H: h, portrait: aspect < 1 };
+    }
 
     function puff(cx, cy, r, a){
       const rg = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
@@ -276,14 +292,15 @@
       ctx.fill();
     }
 
-    function buildCloud(cx, cy, s, seed, vx){
+    function buildCloud(cx, cy, s, seed, vx, tall){
       const puffs = [];
       let state = seed;
       const rnd = () => { state = (state * 16807) % 2147483647; return (state - 1) / 2147483646; };
-      for (let i = 0; i < 9; i++) {
+      const dySpread = tall ? 0.9 : 0.6;
+      for(let i = 0; i < 9; i++){
         puffs.push({
           dx: (rnd() - 0.5) * s * 2.4,
-          dy: (rnd() - 0.5) * s * 0.6,
+          dy: (rnd() - 0.5) * s * dySpread,
           r: s * (0.5 + rnd() * 0.6),
           a: 0.5 + rnd() * 0.3,
         });
@@ -291,34 +308,61 @@
       return { cx, cy, vx, puffs };
     }
 
-    const clouds = [
-      buildCloud(190, 250, 55, 101,  2.8),
-      buildCloud(760, 180, 65, 202,  3.6),
-      buildCloud(520, 340, 45, 303,  2.2),
-      buildCloud(880, 430, 50, 404,  3.1),
-      buildCloud(120, 470, 40, 505,  2.5),
-      buildCloud(400, 150, 50, 606,  3.4),
-    ];
+    function rebuildClouds(){
+      const scale = Math.min(W, H) / 1024;
+      clouds = CLOUD_LAYOUT.map(def =>
+        buildCloud(
+          def.x * W,
+          def.y * H,
+          def.s * scale,
+          def.seed,
+          def.vx * scale,
+          portrait
+        )
+      );
+      if(portrait){
+        clouds.push(
+          buildCloud(W * 0.62, H * 0.12, 42 * scale, 707, 2.4 * scale, true),
+          buildCloud(W * 0.28, H * 0.08, 38 * scale, 808, 2.0 * scale, true)
+        );
+      }
+    }
 
-    const tex = new THREE.CanvasTexture(c);
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearFilter;
+    function resize(viewW, viewH){
+      const dim = skyDimensions(viewW, viewH);
+      W = dim.W; H = dim.H; portrait = dim.portrait;
+      c.width = W; c.height = H;
+      grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0.0, '#5fa8e6');
+      grad.addColorStop(0.5, '#9cc8ee');
+      grad.addColorStop(1.0, '#e8f1f8');
+      rebuildClouds();
+      if(!tex){
+        tex = new THREE.CanvasTexture(c);
+        tex.magFilter = THREE.LinearFilter;
+        tex.minFilter = THREE.LinearFilter;
+        scene.background = tex;
+      } else {
+        tex.image = c;
+      }
+      tex.needsUpdate = true;
+    }
 
     function redraw(t){
       ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, 1024, 1024);
-      for (const cl of clouds) {
-        const drift = ((cl.cx + t * cl.vx) % 1024 + 1024) % 1024;
-        for (const p of cl.puffs) {
+      ctx.fillRect(0, 0, W, H);
+      for(const cl of clouds){
+        const drift = ((cl.cx + t * cl.vx) % W + W) % W;
+        for(const p of cl.puffs){
           puff(drift + p.dx, cl.cy + p.dy, p.r, p.a);
         }
       }
       tex.needsUpdate = true;
     }
 
+    resize(window.innerWidth, window.innerHeight);
     redraw(0);
-    scene.background = tex;
-    return { redraw };
+    return { redraw, resize };
   })();
   scene.fog = new THREE.Fog(0xe8f1f8, 280, 750);
 
@@ -843,17 +887,19 @@
   msgInput.addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
 
   // ================= resize / loop =================
+  let skyT = 0, skyLast = performance.now();
   function resize(){
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w/h;
+    sky.resize(w, h);
+    sky.redraw(skyT);
     applyUiOffset(w, h);
     camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
   resize();
 
-  let skyT = 0, skyLast = performance.now();
   renderer.setAnimationLoop(()=>{
     const now = performance.now();
     const dt = Math.min((now - skyLast) / 1000, 0.05);
