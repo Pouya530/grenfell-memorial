@@ -77,6 +77,11 @@
   }
   .history-panel h2:first-child{margin-top:0}
   .history-panel p{margin:0 0 9px}
+  .modes{display:flex;border:1px solid var(--ink);margin-bottom:9px}
+  .modes button{flex:1;appearance:none;border:0;background:transparent;color:var(--ink);
+    font:inherit;font-size:11.5px;letter-spacing:.03em;padding:8px 4px;cursor:pointer}
+  .modes button+button{border-left:1px solid var(--ink)}
+  .modes button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
   label.rotate{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
   label.rotate input{accent-color:var(--heart)}
 
@@ -185,6 +190,10 @@
     <dt>Height</dt><dd>67.3 m</dd>
     <dt>Homes</dt><dd>120 flats</dd>
   </dl>
+  <div class="modes" role="group" aria-label="Choose era">
+    <button type="button" id="btn1974" aria-pressed="true">Original, 1974–2015</button>
+    <button type="button" id="btn2016" aria-pressed="false">Reclad, 2016</button>
+  </div>
   <button type="button" class="history-toggle" id="historyToggle"
           aria-expanded="false" aria-controls="historyPanel">
     <span>Building history</span>
@@ -253,6 +262,7 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
 
   const scene = new THREE.Scene();
 
@@ -373,261 +383,491 @@
   const sun = new THREE.DirectionalLight(0xfff0d8, 1.15);
   sun.position.set(-95, 120, 85);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.camera.left=-80; sun.shadow.camera.right=80;
   sun.shadow.camera.top=110;  sun.shadow.camera.bottom=-20;
   sun.shadow.camera.far=420;  sun.shadow.bias=-0.0005;
   scene.add(sun);
 
-  // ================= dimensions (m, approximate) =================
-  const PLAN = 21.9;
-  const FLOOR_H = 2.64;
-  const CORNER = 1.05;            // solid corner column width
-  const BAYS = 4;                 // window bays per elevation (1974)
-  const BAY_W = (PLAN - CORNER*2) / BAYS;
-  const PILOTI_H = 3.8;           // open ground level on columns
-  const MEZZ_H  = 5.0;            // community / walkway band (pink panels + glazing)
-  const PODIUM_H = PILOTI_H + MEZZ_H;      // 8.8
-  const RES_FLOORS = 20;
-  const RES_H = RES_FLOORS * FLOOR_H;      // 52.8
-  const CROWN_H = 2.7;            // top plant level with small openings
-  const ROOF_Y = PODIUM_H + RES_H + CROWN_H;   // ≈ 64.3 + parapet ≈ 67
+  // ===================== canvas textures =====================
+  function makeTex(w,h,draw,repeat){
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    draw(c.getContext('2d'), w, h);
+    const t=new THREE.CanvasTexture(c);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping;
+    if(repeat) t.repeat.set(repeat[0],repeat[1]);
+    t.anisotropy = 4;
+    return t;
+  }
+  // ribbed precast (vertical flutes) — grayscale, tinted by vertex colour
+  const texRib = makeTex(128,128,(x,w,h)=>{
+    x.fillStyle='#ffffff'; x.fillRect(0,0,w,h);
+    for(let i=0;i<w;i+=10){
+      x.fillStyle='rgba(0,0,0,0.22)'; x.fillRect(i,0,4,h);
+      x.fillStyle='rgba(0,0,0,0.10)'; x.fillRect(i+4,0,1,h);
+    }
+    for(let i=0;i<450;i++){ x.fillStyle='rgba(0,0,0,'+(Math.random()*0.07)+')';
+      x.fillRect(Math.random()*w, Math.random()*h, 2, 2); }
+  });
+  // exposed aggregate — dense speckle
+  const texAgg = makeTex(128,128,(x,w,h)=>{
+    x.fillStyle='#ffffff'; x.fillRect(0,0,w,h);
+    for(let i=0;i<2600;i++){
+      x.fillStyle='rgba(0,0,0,'+(0.12+Math.random()*0.3)+')';
+      const s=1+Math.random()*2;
+      x.fillRect(Math.random()*w, Math.random()*h, s, s);
+    }
+  });
+  // plain weathered concrete — noise + faint streaks
+  const texCon = makeTex(128,128,(x,w,h)=>{
+    x.fillStyle='#ffffff'; x.fillRect(0,0,w,h);
+    for(let i=0;i<900;i++){ x.fillStyle='rgba(0,0,0,'+(Math.random()*0.08)+')';
+      x.fillRect(Math.random()*w, Math.random()*h, 2, 2); }
+    for(let i=0;i<10;i++){ x.fillStyle='rgba(0,0,0,'+(0.03+Math.random()*0.05)+')';
+      x.fillRect(Math.random()*w, 0, 2+Math.random()*4, h); }
+  });
+  // 2016 cassette joints — light base with recessed joint lines
+  const texClad = makeTex(128,128,(x,w,h)=>{
+    x.fillStyle='#ffffff'; x.fillRect(0,0,w,h);
+    x.fillStyle='rgba(0,0,0,0.18)';
+    x.fillRect(0,0,w,2); x.fillRect(0,0,2,h);
+    x.fillRect(0,h/2,w,2);
+  });
+  // finger-block elevation — window grid
+  const texFinger = makeTex(256,64,(x,w,h)=>{
+    x.fillStyle='#a8a193'; x.fillRect(0,0,w,h);
+    for(let i=6;i<w-10;i+=22){ for(let j=8;j<h-10;j+=24){
+      x.fillStyle='#3a4450'; x.fillRect(i,j,14,12);
+      x.fillStyle='#ded9cc'; x.fillRect(i,j+12,14,4);
+    }}
+  },[3,1]);
 
-  // ================= materials =================
-  const mat = {
-    // 1974 palette, sampled from the photos
-    pier:      new THREE.MeshStandardMaterial({color:0x93887a, roughness:0.95}),   // ribbed buff concrete
-    pierDk:    new THREE.MeshStandardMaterial({color:0x7c7264, roughness:0.95}),
-    spandrel:  new THREE.MeshStandardMaterial({color:0x4a4239, roughness:1.0 }),   // dark aggregate band
-    whitePanel:new THREE.MeshStandardMaterial({color:0xe9e5da, roughness:0.8 }),
-    glass:     new THREE.MeshStandardMaterial({color:0x33414d, metalness:0.7, roughness:0.22}),
-    glassMezz: new THREE.MeshStandardMaterial({color:0x435463, metalness:0.6, roughness:0.3 }),
-    pink:      new THREE.MeshStandardMaterial({color:0xb49aa6, roughness:0.85}),   // mauve podium panels
-    deck:      new THREE.MeshStandardMaterial({color:0x9a917f, roughness:1.0 }),
-    screen:    new THREE.MeshStandardMaterial({color:0xaaa290, roughness:0.95}),
-    awning:    new THREE.MeshStandardMaterial({color:0x2e6ea6, roughness:0.6 }),
-    dark:      new THREE.MeshStandardMaterial({color:0x2c2a26, roughness:0.9 }),
-    metal:     new THREE.MeshStandardMaterial({color:0x555a5e, metalness:0.7, roughness:0.4}),
-    // 2016 palette
-    clad:      new THREE.MeshStandardMaterial({color:0xc4c9cd, metalness:0.35, roughness:0.45}),
-    cladDk:    new THREE.MeshStandardMaterial({color:0x9aa1a7, metalness:0.35, roughness:0.5 }),
-    glass16:   new THREE.MeshStandardMaterial({color:0x2b333c, metalness:0.85, roughness:0.18}),
-    // ground
-    grass:     new THREE.MeshStandardMaterial({color:0x8fa07e, roughness:1.0}),
-    path:      new THREE.MeshStandardMaterial({color:0xa8a49a, roughness:1.0}),
-    lowBlock:  new THREE.MeshStandardMaterial({color:0xa39c8e, roughness:0.95}),
-    tree:      new THREE.MeshStandardMaterial({color:0x5e7a4a, roughness:1.0}),
-    trunk:     new THREE.MeshStandardMaterial({color:0x6b5a48, roughness:1.0})
+  // ===================== materials =====================
+  const M = {
+    rib:   new THREE.MeshStandardMaterial({map:texRib, vertexColors:true, roughness:0.95}),
+    agg:   new THREE.MeshStandardMaterial({map:texAgg, vertexColors:true, roughness:1.0}),
+    con:   new THREE.MeshStandardMaterial({map:texCon, vertexColors:true, roughness:0.92}),
+    flat:  new THREE.MeshStandardMaterial({vertexColors:true, roughness:0.85}),
+    glass: new THREE.MeshStandardMaterial({vertexColors:true, metalness:0.65, roughness:0.22}),
+    metal: new THREE.MeshStandardMaterial({vertexColors:true, metalness:0.75, roughness:0.4}),
+    clad:  new THREE.MeshStandardMaterial({map:texClad, vertexColors:true, metalness:0.3, roughness:0.5}),
+    finger:new THREE.MeshStandardMaterial({map:texFinger, roughness:0.95}),
   };
 
-  function box(group, w,h,d, x,y,z, material, cast=true){
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), material);
-    m.position.set(x,y,z);
-    m.castShadow = cast; m.receiveShadow = true;
-    group.add(m); return m;
-  }
-
-  // place a list of facade items on all four elevations
-  // item: {w,h,d, along, up, out, mat}
-  function onFourSides(group, items){
-    const half = PLAN/2;
-    items.forEach(it=>{
-      for(let side=0; side<4; side++){
-        const g = new THREE.Mesh(new THREE.BoxGeometry(it.w, it.h, it.d), it.mat);
-        g.castShadow = true; g.receiveShadow = true;
-        const out = half + it.out;
-        if(side===0){ g.position.set(it.along, it.up,  out); }
-        if(side===1){ g.position.set(-it.along, it.up, -out); }
-        if(side===2){ g.position.set( out, it.up, -it.along); g.rotation.y = Math.PI/2; }
-        if(side===3){ g.position.set(-out, it.up, it.along);  g.rotation.y = Math.PI/2; }
-        group.add(g);
-      }
+  // ===================== merged-geometry bucket =====================
+  function Bucket(material){ this.mat=material; this.geos=[]; }
+  Bucket.prototype._add=function(g, x,y,z, o){
+    o=o||{};
+    if(o.rx) g.rotateX(o.rx); if(o.ry) g.rotateY(o.ry); if(o.rz) g.rotateZ(o.rz);
+    g.translate(x,y,z);
+    const col=new THREE.Color(o.color!==undefined?o.color:0xffffff);
+    const n=g.attributes.position.count, arr=new Float32Array(n*3);
+    for(let i=0;i<n;i++){ arr[i*3]=col.r; arr[i*3+1]=col.g; arr[i*3+2]=col.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(arr,3));
+    if(o.uvs){ const uv=g.attributes.uv;
+      for(let i=0;i<uv.count;i++){ uv.setXY(i, uv.getX(i)*o.uvs[0], uv.getY(i)*o.uvs[1]); } }
+    this.geos.push(g);
+  };
+  Bucket.prototype.box=function(w,h,d,x,y,z,o){ this._add(new THREE.BoxGeometry(w,h,d),x,y,z,o); };
+  Bucket.prototype.cyl=function(rt,rb,h,seg,x,y,z,o){ this._add(new THREE.CylinderGeometry(rt,rb,h,seg||8),x,y,z,o); };
+  Bucket.prototype.sphere=function(r,x,y,z,o){ o=o||{};
+    const g=new THREE.SphereGeometry(r,9,7); if(o.sy) g.scale(1,o.sy,1); this._add(g,x,y,z,o); };
+  Bucket.prototype.build=function(parent){
+    if(!this.geos.length) return;
+    let vc=0, ic=0;
+    this.geos.forEach(g=>{ vc+=g.attributes.position.count; ic+=g.index.count; });
+    const pos=new Float32Array(vc*3), nor=new Float32Array(vc*3),
+          col=new Float32Array(vc*3), uv=new Float32Array(vc*2),
+          idx=new Uint32Array(ic);
+    let vo=0, io=0;
+    this.geos.forEach(g=>{
+      pos.set(g.attributes.position.array, vo*3);
+      nor.set(g.attributes.normal.array,  vo*3);
+      col.set(g.attributes.color.array,   vo*3);
+      uv.set(g.attributes.uv.array,       vo*2);
+      const gi=g.index.array;
+      for(let i=0;i<gi.length;i++) idx[io+i]=gi[i]+vo;
+      vo+=g.attributes.position.count; io+=gi.length;
     });
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    geo.setAttribute('normal',   new THREE.BufferAttribute(nor,3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(col,3));
+    geo.setAttribute('uv',       new THREE.BufferAttribute(uv,2));
+    geo.setIndex(new THREE.BufferAttribute(idx,1));
+    const m=new THREE.Mesh(geo, this.mat);
+    m.castShadow=true; m.receiveShadow=true;
+    parent.add(m);
+    this.geos=[];
+  };
+
+  // face transform helper: (along, up, out) -> world, for side 0..3 (+Z,-Z,+X,-X)
+  const HALF = 21.9/2;
+  function faceAdd(bucket, kind, dims, side, along, up, out, o){
+    o = Object.assign({}, o||{});
+    let x,y=up,z, ry=0;
+    if(side===0){ x=along;        z= HALF+out; }
+    if(side===1){ x=-along;       z=-(HALF+out); ry=Math.PI; }
+    if(side===2){ x= HALF+out;    z=-along;    ry=Math.PI/2; }
+    if(side===3){ x=-(HALF+out);  z= along;    ry=-Math.PI/2; }
+    o.ry=(o.ry||0)+ry;
+    if(kind==='box') bucket._add(new THREE.BoxGeometry(dims[0],dims[1],dims[2]),x,y,z,o);
+    else if(kind==='cyl') bucket._add(new THREE.CylinderGeometry(dims[0],dims[1],dims[2],dims[3]||8),x,y,z,o);
   }
 
-  // ================= 1974 tower (photo reference: images 1 & 3) =================
-  function build1974(){
-    const g = new THREE.Group();
+  // ===================== dimensions (m) =====================
+  const PLAN=21.9, FLOOR_H=2.64, CORNER=1.05, BAYS=4;
+  const BAY_W=(PLAN-CORNER*2)/BAYS;
+  const GROUND_H=3.2, MEZZ_H=5.4;                 // ground pilotis + walkway/walkway+1 band
+  const PODIUM_H=GROUND_H+MEZZ_H;                 // 8.6
+  const RES_FLOORS=20, RES_H=RES_FLOORS*FLOOR_H;  // 52.8
+  const CROWN_H=2.7;
+  const SHAFT_TOP=PODIUM_H+RES_H+CROWN_H;         // 64.1
+  const ROOF_Y=SHAFT_TOP;
 
-    // core mass behind the facade
-    box(g, PLAN, RES_H + CROWN_H, PLAN, 0, PODIUM_H + (RES_H+CROWN_H)/2, 0, mat.pierDk);
+  // palette (vertex-colour tints over grayscale textures)
+  const C={ pier:0x93887a, pierDk:0x7c7264, agg:0x4d453b, white:0xe9e5da,
+    frame:0xc9c8c0, glassD:0x2c3742, glassM:0x46525e, glassW:0x9aa4ab, glassC:0xd8d4c8,
+    pink:0xb49aa6, deck:0x9a917f, screen:0xaaa290, awning:0x2e6ea6, dark:0x2c2a26,
+    metal:0x5b6065, lamp:0x3a3e42, clad:0xc6cbcf, cladDk:0x9aa1a7, trunk:0x6b5a48,
+    tree1:0x5e7a4a, tree2:0x6f8b54, tree3:0x4f6b3f };
+  function glassTint(){
+    const r=Math.random();
+    if(r<0.42) return C.glassD;         // dark rooms
+    if(r<0.68) return C.glassM;         // mid
+    if(r<0.86) return C.glassC;         // net curtains
+    return C.glassW;                    // bright reflection
+  }
 
-    const items = [];
-    const SPAND_H = 1.15;                  // dark aggregate band
-    const WIN_H   = FLOOR_H - SPAND_H;     // 1.49 window strip
+  // ===================== TOWER 1974 (high detail) =====================
+  const tower1974 = new THREE.Group();
+  (function(){
+    const rib=new Bucket(M.rib), agg=new Bucket(M.agg), con=new Bucket(M.con),
+          flat=new Bucket(M.flat), gls=new Bucket(M.glass), met=new Bucket(M.metal);
+
+    // core mass
+    con.box(PLAN,RES_H+CROWN_H,PLAN, 0,PODIUM_H+(RES_H+CROWN_H)/2,0, {color:C.pierDk, uvs:[8,20]});
+
+    const SPAND=1.15, WIN=FLOOR_H-SPAND;
+    // window module: frame + transom + mullions + glazing + sill
+    function windowUnit(side, cx, y0, w){
+      const fh=WIN-0.14, fy=y0+SPAND+0.02+fh/2, t=0.065;
+      faceAdd(flat,'box',[w,t,0.10], side,cx,fy+fh/2-t/2,0.10,{color:C.frame});   // head
+      faceAdd(flat,'box',[w,t,0.10], side,cx,fy-fh/2+t/2,0.10,{color:C.frame});   // sill rail
+      faceAdd(flat,'box',[t,fh,0.10], side,cx-w/2+t/2,fy,0.10,{color:C.frame});
+      faceAdd(flat,'box',[t,fh,0.10], side,cx+w/2-t/2,fy,0.10,{color:C.frame});
+      faceAdd(flat,'box',[w-2*t,t,0.09], side,cx,fy+fh/2-0.62,0.10,{color:C.frame}); // transom
+      const iw=(w-2*t)/2;
+      faceAdd(flat,'box',[t*0.8,fh-2*t,0.09], side,cx,fy,0.10,{color:C.frame});      // centre mullion
+      // glazing panes (varied tint)
+      for(const s of [-1,1]){
+        faceAdd(gls,'box',[iw-0.06,fh-2*t-0.04,0.05], side,cx+s*iw/2,fy,0.06,{color:glassTint()});
+      }
+      faceAdd(flat,'box',[w+0.10,0.07,0.16], side,cx,y0+SPAND-0.01,0.11,{color:C.white}); // sill
+    }
 
     for(let f=0; f<RES_FLOORS; f++){
-      const y0 = PODIUM_H + f*FLOOR_H;
-      // continuous dark spandrel band across the face
-      items.push({w:PLAN - CORNER*2, h:SPAND_H, d:0.14,
-                  along:0, up:y0 + SPAND_H/2, out:0.03, mat:mat.spandrel});
-      // window strip, bay by bay
-      for(let b=0; b<BAYS; b++){
-        const cx = -PLAN/2 + CORNER + BAY_W*(b+0.5);
-        const inner = BAY_W - 0.62;                      // minus pier width
-        const winY = y0 + SPAND_H + WIN_H/2;
-        const pw = inner * 0.22;                         // each white infill panel
-        const sideGlass = (inner - 2*pw) / 2;            // flanking glazing
-        // glass on outer edges, two white panels paired in the centre (photo ref)
-        items.push({w:sideGlass, h:WIN_H, d:0.10, along:cx - pw - sideGlass/2,
-                    up:winY, out:0.02, mat:mat.glass});
-        items.push({w:sideGlass, h:WIN_H, d:0.10, along:cx + pw + sideGlass/2,
-                    up:winY, out:0.02, mat:mat.glass});
-        items.push({w:pw, h:WIN_H, d:0.13, along:cx - pw/2,
-                    up:winY, out:0.035, mat:mat.whitePanel});
-        items.push({w:pw, h:WIN_H, d:0.13, along:cx + pw/2,
-                    up:winY, out:0.035, mat:mat.whitePanel});
+      const y0=PODIUM_H+f*FLOOR_H;
+      for(let side=0; side<4; side++){
+        const ns = side<2;                            // N/S vs E/W elevation pairs
+        // dark aggregate spandrel band + drip shadow
+        faceAdd(agg,'box',[PLAN-CORNER*2,SPAND,0.14], side,0,y0+SPAND/2,0.03,
+                {color:C.agg, uvs:[14,1]});
+        faceAdd(flat,'box',[PLAN-CORNER*2,0.05,0.15], side,0,y0+0.03,0.035,{color:0x241f1a});
+        for(let b=0;b<BAYS;b++){
+          const bx=-PLAN/2+CORNER+BAY_W*(b+0.5);
+          const inner=BAY_W-0.62;
+          // panel/window rhythm — differs subtly between elevation pairs
+          const pw=inner*0.24, ww=(inner-pw*(ns?2:1))/2;
+          const flip=((f+b)%2===0)?-1:1;
+          if(ns){
+            faceAdd(flat,'box',[pw,WIN-0.1,0.12], side,bx-inner/2+pw/2,y0+SPAND+WIN/2,0.045,{color:C.white});
+            faceAdd(flat,'box',[pw,WIN-0.1,0.12], side,bx+inner/2-pw/2,y0+SPAND+WIN/2,0.045,{color:C.white});
+            windowUnit(side, bx-flip*(ww/2+0.01), y0, ww);
+            windowUnit(side, bx+flip*(ww/2+0.01), y0, ww);
+          }else{
+            faceAdd(flat,'box',[pw,WIN-0.1,0.12], side,bx+flip*(inner/2-pw/2),y0+SPAND+WIN/2,0.045,{color:C.white});
+            windowUnit(side, bx-flip*pw/2, y0, inner-pw-0.02);
+          }
+        }
       }
     }
-    // ribbed vertical piers between bays, full height of the shaft
-    for(let b=1; b<BAYS; b++){
-      const cx = -PLAN/2 + CORNER + BAY_W*b;
-      items.push({w:0.62, h:RES_H + CROWN_H, d:0.30, along:cx,
-                  up:PODIUM_H + (RES_H+CROWN_H)/2, out:0.10, mat:mat.pier});
-    }
-    // solid corner columns
-    for(const s of [-1,1]){
-      items.push({w:CORNER*1.15, h:RES_H + CROWN_H, d:0.30, along:s*(PLAN/2 - CORNER/2),
-                  up:PODIUM_H + (RES_H+CROWN_H)/2, out:0.10, mat:mat.pier});
-    }
-    // ---- crown: plant level with row of small dark openings ----
-    const cy = PODIUM_H + RES_H + CROWN_H/2;
-    items.push({w:PLAN - CORNER*2, h:CROWN_H, d:0.12,
-                along:0, up:cy, out:0.05, mat:mat.pier});
-    const openings = 10, ow = 0.78, gap = (PLAN - CORNER*2)/openings;
-    for(let i=0;i<openings;i++){
-      const cx = -PLAN/2 + CORNER + gap*(i+0.5);
-      items.push({w:ow, h:1.25, d:0.10, along:cx, up:cy, out:0.09, mat:mat.dark});
-    }
-    onFourSides(g, items);
-
-    // parapet, roof furniture, mast — as in the aerial photo
-    box(g, PLAN+0.4, 0.75, PLAN+0.4, 0, ROOF_Y+0.37, 0, mat.pierDk);
-    box(g, 6.5, 1.8, 5.5, 2.2, ROOF_Y+1.35, -2.5, mat.pierDk);      // plant box
-    for(const [w,d,z] of [[PLAN-1,0.07, PLAN/2-0.5],[PLAN-1,0.07,-(PLAN/2-0.5)]]){
-      box(g, w, 0.07, d, 0, ROOF_Y+1.5, z, mat.metal, false);        // rail hint
-    }
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,17,8), mat.metal);
-    mast.position.set(1.6, ROOF_Y+9.1, 0.8); mast.castShadow = true; g.add(mast);
-    for(let i=0;i<3;i++) box(g, 1.5, 0.06, 0.06, 1.6, ROOF_Y+5+i*4.4, 0.8, mat.metal, false);
-
-    // ================= podium & entrance (photo reference: image 3) =================
-    // open pilotis: perimeter columns
-    for(let b=0; b<=BAYS; b++){
-      const cx = -PLAN/2 + CORNER + BAY_W*Math.min(b,BAYS) - (b===0?CORNER:0)*0; // pier lines
-    }
-    const colXs = [];
-    for(let b=0; b<=BAYS; b++) colXs.push(-PLAN/2 + CORNER + BAY_W*b);
-    colXs[0] = -PLAN/2 + 0.5; colXs[BAYS] = PLAN/2 - 0.5;
-    colXs.forEach(cx=>{
-      box(g, 0.6, PILOTI_H, 0.6, cx, PILOTI_H/2,  PLAN/2 - 0.35, mat.pier);
-      box(g, 0.6, PILOTI_H, 0.6, cx, PILOTI_H/2, -(PLAN/2 - 0.35), mat.pier);
-      box(g, 0.6, PILOTI_H, 0.6,  PLAN/2 - 0.35, PILOTI_H/2, cx, mat.pier);
-      box(g, 0.6, PILOTI_H, 0.6, -(PLAN/2 - 0.35), PILOTI_H/2, cx, mat.pier);
-    });
-    // recessed dark core + lobby glazing at ground
-    box(g, PLAN-5, PILOTI_H, PLAN-5, 0, PILOTI_H/2, 0, mat.dark);
-    box(g, 6.5, 2.9, 0.15, 0, 1.45, (PLAN-5)/2 + 0.03, mat.glassMezz);
-
-    // mezzanine band: edge beams, pink panels, glazing (like image 3)
-    const mez = [];
-    mez.push({w:PLAN, h:0.7, d:0.25, along:0, up:PILOTI_H + 0.35, out:0.12, mat:mat.pier});     // deck edge beam
-    mez.push({w:PLAN-1.2, h:1.5, d:0.18, along:0, up:PILOTI_H + 0.7 + 0.75, out:0.06, mat:mat.pink});
-    mez.push({w:PLAN-1.2, h:2.1, d:0.14, along:0, up:PILOTI_H + 2.2 + 1.05, out:0.04, mat:mat.glassMezz});
-    mez.push({w:PLAN,     h:0.7, d:0.25, along:0, up:PODIUM_H - 0.35, out:0.12, mat:mat.pier}); // top edge beam
-    // mullions across the mezz glazing
-    for(let i=0;i<9;i++){
-      const cx = -PLAN/2 + 1.2 + i*((PLAN-2.4)/8);
-      mez.push({w:0.12, h:2.1, d:0.16, along:cx, up:PILOTI_H + 2.2 + 1.05, out:0.05, mat:mat.pier});
-    }
-    onFourSides(g, mez);
-
-    // walkway deck + stair + screen wall on the entrance side (+Z)
-    const deckY = PILOTI_H;                                     // deck level
-    box(g, 12, 0.45, 7.5, 1.5, deckY - 0.22, PLAN/2 + 3.75, mat.deck);            // deck slab
-    box(g, 12, 1.05, 0.22, 1.5, deckY + 0.5, PLAN/2 + 7.4, mat.deck);             // parapet
-    box(g, 0.22, 1.05, 7.3, 7.4, deckY + 0.5, PLAN/2 + 3.75, mat.deck);
-    // perforated screen-block wall (image 3, foreground)
-    const scr = box(g, 4.4, 1.6, 0.22, -2.6, deckY + 0.8, PLAN/2 + 7.4, mat.screen);
-    for(let i=0;i<8;i++) for(let j=0;j<3;j++)
-      box(g, 0.28, 0.28, 0.26, -2.6 - 1.85 + i*0.53, deckY + 0.35 + j*0.53, PLAN/2 + 7.4, mat.dark, false);
-    // broad stair descending from the deck
-    const steps = 12, stepH = deckY/steps, stepD = 0.62;
-    for(let i=0;i<steps;i++){
-      box(g, 4.4, stepH, stepD, -4.6, deckY - stepH*(i+0.5), PLAN/2 + 7.5 + 0.3 + i*stepD, mat.deck);
-    }
-    box(g, 0.14, 0.95, steps*stepD, -6.85, deckY*0.55, PLAN/2 + 7.8 + steps*stepD/2 - 0.3, mat.metal, false);
-    box(g, 0.14, 0.95, steps*stepD, -2.35, deckY*0.55, PLAN/2 + 7.8 + steps*stepD/2 - 0.3, mat.metal, false);
-    // blue canopies tucked under the deck (nursery frontage in the photo)
-    for(const [x,z,rot] of [[-2.5, PLAN/2 + 1.2, 0.1],[4.5, PLAN/2 + 1.4, 0.12]]){
-      const a = box(g, 4.2, 0.12, 2.0, x, 2.9, z, mat.awning);
-      a.rotation.x = rot;
-    }
-    return g;
-  }
-
-  // ================= 2016 reclad tower (photo reference: image 2) =================
-  function build2016(){
-    const g = new THREE.Group();
-    const COLS = 6;
-    const CW = (PLAN - 1.8)/COLS;
-
-    box(g, PLAN, ROOF_Y, PLAN, 0, ROOF_Y/2, 0, mat.cladDk);
-
-    const items = [];
-    for(let f=0; f<RES_FLOORS+1; f++){
-      const y0 = PODIUM_H + f*FLOOR_H;
-      // horizontal light panel band
-      items.push({w:PLAN-1.8, h:1.0, d:0.14, along:0, up:y0+0.5, out:0.05, mat:mat.clad});
-      for(let c=0; c<COLS; c++){
-        const cx = -PLAN/2 + 0.9 + CW*(c+0.5);
-        items.push({w:CW*0.62, h:FLOOR_H-1.0, d:0.10, along:cx,
-                    up:y0 + 1.0 + (FLOOR_H-1.0)/2, out:0.03, mat:mat.glass16});
-      }
-    }
-    for(let c=0; c<=COLS; c++){
-      const cx = -PLAN/2 + 0.9 + CW*c;
-      items.push({w:0.42, h:RES_H + FLOOR_H, d:0.30, along:cx,
-                  up:PODIUM_H + (RES_H+FLOOR_H)/2, out:0.12, mat:mat.clad});
-    }
-    for(const s of [-1,1]){
-      items.push({w:1.0, h:RES_H + FLOOR_H, d:0.32, along:s*(PLAN/2 - 0.5),
-                  up:PODIUM_H + (RES_H+FLOOR_H)/2, out:0.13, mat:mat.clad});
-    }
-    onFourSides(g, items);
-
-    // crown fins
-    const finH = 3.4;
+    // ribbed piers between bays + corner columns (full shaft height)
     for(let side=0; side<4; side++){
-      for(let c=0; c<=COLS; c++){
-        const along = -PLAN/2 + 0.9 + CW*c;
-        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.42, finH, 0.28), mat.clad);
-        fin.castShadow = true;
-        const out = PLAN/2 + 0.16, y = ROOF_Y + finH/2 - 0.5;
-        if(side===0){ fin.position.set(along, y,  out); fin.rotation.x =  0.15; }
-        if(side===1){ fin.position.set(along, y, -out); fin.rotation.x = -0.15; }
-        if(side===2){ fin.position.set( out, y, along); fin.rotation.y = Math.PI/2; fin.rotation.x =  0.15; }
-        if(side===3){ fin.position.set(-out, y, along); fin.rotation.y = Math.PI/2; fin.rotation.x = -0.15; }
-        g.add(fin);
+      for(let b=1;b<BAYS;b++){
+        const bx=-PLAN/2+CORNER+BAY_W*b;
+        faceAdd(rib,'box',[0.62,RES_H+CROWN_H,0.32], side,bx,PODIUM_H+(RES_H+CROWN_H)/2,0.11,
+                {color:C.pier, uvs:[1.6,26]});
+      }
+      for(const s of [-1,1]){
+        faceAdd(rib,'box',[CORNER*1.18,RES_H+CROWN_H,0.32], side,s*(PLAN/2-CORNER/2),
+                PODIUM_H+(RES_H+CROWN_H)/2,0.11,{color:C.pier, uvs:[2.4,26]});
+      }
+      // crown band with deep recessed openings
+      const cy=PODIUM_H+RES_H+CROWN_H/2;
+      faceAdd(rib,'box',[PLAN-CORNER*2,CROWN_H,0.14], side,0,cy,0.05,{color:C.pier, uvs:[14,2]});
+      const N=10, gap=(PLAN-CORNER*2)/N;
+      for(let i=0;i<N;i++){
+        const ox=-PLAN/2+CORNER+gap*(i+0.5);
+        faceAdd(flat,'box',[0.80,1.30,0.06], side,ox,cy,0.10,{color:C.dark});
+        faceAdd(flat,'box',[0.90,0.07,0.10], side,ox,cy+0.68,0.10,{color:C.pierDk}); // head reveal
+        faceAdd(flat,'box',[0.90,0.07,0.10], side,ox,cy-0.68,0.10,{color:C.pierDk});
       }
     }
-    box(g, PLAN-2, 1.0, PLAN-2, 0, ROOF_Y+0.5, 0, mat.cladDk);
+    // satellite dishes (as in the photos)
+    for(let i=0;i<14;i++){
+      const side=[0,0,0,2,2,3][i%6], f=3+Math.floor(Math.random()*16);
+      const bx=-PLAN/2+CORNER+BAY_W*(Math.floor(Math.random()*4)+(Math.random()<.5?0.18:0.82));
+      const y=PODIUM_H+f*FLOOR_H+SPAND+0.5;
+      faceAdd(met,'cyl',[0.24,0.24,0.05,10], side,bx,y,0.30,{rx:Math.PI/2-0.5,color:0xb9bdc0});
+      faceAdd(met,'box',[0.05,0.05,0.26], side,bx,y-0.08,0.13,{color:C.metal});
+    }
 
-    // podium: enclosed community levels + entrance canopy
-    const pod = [];
-    pod.push({w:PLAN-2, h:MEZZ_H, d:0.2, along:0, up:PILOTI_H + MEZZ_H/2, out:0.06, mat:mat.cladDk});
-    pod.push({w:PLAN-2, h:2.6, d:0.22, along:0, up:1.6, out:0.08, mat:mat.glass16});
-    onFourSides(g, pod);
-    box(g, 8.5, 0.3, 4.6, 0, 3.4, PLAN/2 + 2.3, mat.clad);
-    box(g, 0.26, 3.25, 0.26, -3.6, 1.7, PLAN/2 + 4.1, mat.cladDk);
-    box(g, 0.26, 3.25, 0.26,  3.6, 1.7, PLAN/2 + 4.1, mat.cladDk);
-    return g;
-  }
+    // ---- parapet, roof furniture, lattice mast ----
+    con.box(PLAN+0.44,0.55,PLAN+0.44, 0,ROOF_Y+0.27,0,{color:C.pierDk, uvs:[10,0.5]});
+    flat.box(PLAN+0.52,0.10,PLAN+0.52, 0,ROOF_Y+0.57,0,{color:C.white});          // coping
+    // railing: posts + two rails
+    const rr=PLAN/2-0.45;
+    for(let side=0;side<4;side++){
+      for(let p=-rr;p<=rr;p+=1.8) faceAdd(met,'box',[0.05,0.85,0.05], side,p,ROOF_Y+1.0,-0.95,{color:C.metal});
+      faceAdd(met,'box',[rr*2,0.05,0.05], side,0,ROOF_Y+1.40,-0.95,{color:C.metal});
+      faceAdd(met,'box',[rr*2,0.04,0.04], side,0,ROOF_Y+1.02,-0.95,{color:C.metal});
+    }
+    con.box(6.6,2.0,5.6, 2.2,ROOF_Y+1.55,-2.6,{color:C.pierDk, uvs:[4,1.4]});     // plant room
+    flat.box(1.1,1.5,0.08, 2.2,ROOF_Y+1.35,0.22,{color:C.dark});                  // plant door
+    for(let i=0;i<3;i++) flat.box(1.2,0.16,0.06, 4.4,ROOF_Y+1.1+i*0.4,-2.6+2.86,{color:C.dark}); // louvres
+    con.box(3.4,1.4,3.2, -2.6,ROOF_Y+1.25,2.4,{color:C.pierDk, uvs:[2.4,1]});     // lift overrun
+    met.cyl(0.5,0.5,0.5,10, -5.5,ROOF_Y+0.85,-5.0,{color:0x8f9499});              // water tank
+    // lattice mast (photo 1): 3 tapering legs + braces
+    const mx=1.6, mz=0.8, MH=17;
+    for(let leg=0;leg<3;leg++){
+      const a0=leg*Math.PI*2/3, r0=0.55, r1=0.07;
+      const x0=mx+Math.cos(a0)*r0, z0=mz+Math.sin(a0)*r0;
+      const x1=mx+Math.cos(a0)*r1, z1=mz+Math.sin(a0)*r1;
+      const dx=x1-x0, dz=z1-z0, len=Math.sqrt(MH*MH+dx*dx+dz*dz);
+      met.cyl(0.035,0.05,len,6, (x0+x1)/2, ROOF_Y+MH/2, (z0+z1)/2,
+              {rx:Math.atan2(dz,MH), rz:-Math.atan2(dx,MH), color:C.metal});
+    }
+    for(let l=1;l<9;l++){
+      const t=l/9, r=0.55*(1-t)+0.07*t, y=ROOF_Y+MH*t;
+      for(let leg=0;leg<3;leg++){
+        const a=leg*Math.PI*2/3, b=(leg+1)*Math.PI*2/3;
+        const ax=mx+Math.cos(a)*r, az=mz+Math.sin(a)*r,
+              bx2=mx+Math.cos(b)*r, bz=mz+Math.sin(b)*r;
+        const cxx=(ax+bx2)/2, czz=(az+bz)/2, L=Math.hypot(bx2-ax,bz-az);
+        met.box(L,0.03,0.03, cxx,y,czz,{ry:-Math.atan2(bz-az,bx2-ax),color:C.metal});
+      }
+    }
+    met.cyl(0.02,0.02,4.5,5, mx,ROOF_Y+MH+2.2,mz,{color:C.metal});               // whip
+    for(let i=0;i<3;i++) met.box(0.9,0.05,0.05, mx,ROOF_Y+6+i*4,mz,{color:C.metal});
 
-  const tower1974 = build1974();
-  const tower2016 = build2016();
-  tower2016.visible = false;
-  scene.add(tower1974, tower2016);
+    // ---- podium: pilotis, lobby, walkway band, deck, stair, screen, awnings ----
+    const colXs=[-PLAN/2+0.5];
+    for(let b=1;b<BAYS;b++) colXs.push(-PLAN/2+CORNER+BAY_W*b);
+    colXs.push(PLAN/2-0.5);
+    colXs.forEach(cx=>{ for(let side=0;side<4;side++){
+      faceAdd(con,'box',[0.58,GROUND_H,0.58], side,cx,GROUND_H/2,-0.35,{color:C.pier, uvs:[1,2.4]});
+      faceAdd(con,'box',[0.86,0.28,0.86], side,cx,GROUND_H-0.14,-0.35,{color:C.pier}); // capital
+      faceAdd(flat,'box',[0.66,0.10,0.66], side,cx,0.05,-0.35,{color:C.pierDk});       // plinth
+    }});
+    con.box(PLAN-5,GROUND_H,PLAN-5, 0,GROUND_H/2,0,{color:C.dark, uvs:[10,2]});
+    // lobby front: glazing + double door + fascia sign
+    flat.box(6.8,0.1,0.1, 0,2.75,(PLAN-5)/2+0.06,{color:C.frame});
+    gls.box(6.4,2.35,0.08, 0,1.45,(PLAN-5)/2+0.05,{color:C.glassM});
+    flat.box(0.08,2.35,0.1, -1.0,1.45,(PLAN-5)/2+0.07,{color:C.frame});
+    flat.box(0.08,2.35,0.1,  1.0,1.45,(PLAN-5)/2+0.07,{color:C.frame});
+    flat.box(2.0,2.15,0.06, 0,1.35,(PLAN-5)/2+0.08,{color:0x24313c});             // doors
+    flat.box(2.6,0.5,0.08, 0,3.15,(PLAN-5)/2+0.10,{color:C.white});               // sign board
+    // walkway band: edge beams, pink panel course with joints, glazing with mullions
+    for(let side=0;side<4;side++){
+      faceAdd(con,'box',[PLAN,0.72,0.26], side,0,GROUND_H+0.36,0.12,{color:C.pier, uvs:[12,0.5]});
+      const py0=GROUND_H+0.72;
+      const NP=10, pwid=(PLAN-1.4)/NP;
+      for(let i=0;i<NP;i++){
+        faceAdd(flat,'box',[pwid-0.05,1.45,0.16], side,-PLAN/2+0.7+pwid*(i+0.5),py0+0.72,0.05,
+                {color:(i%3===2)?0xa88e9a:C.pink});
+      }
+      faceAdd(gls,'box',[PLAN-1.4,2.35,0.10], side,0,py0+1.45+1.18,0.03,{color:C.glassM});
+      for(let i=0;i<=12;i++){
+        faceAdd(flat,'box',[0.09,2.35,0.14], side,-PLAN/2+0.7+i*((PLAN-1.4)/12),py0+1.45+1.18,0.05,{color:C.frame});
+      }
+      faceAdd(flat,'box',[PLAN-1.4,0.08,0.14], side,0,py0+1.45+1.18,0.05,{color:C.frame});
+      faceAdd(con,'box',[PLAN,0.72,0.26], side,0,PODIUM_H-0.36,0.12,{color:C.pier, uvs:[12,0.5]});
+    }
+    // entrance walkway deck (+Z) with balustrade
+    const dy=GROUND_H;
+    con.box(13,0.42,7.6, 1.2,dy-0.21,PLAN/2+3.8,{color:C.deck, uvs:[9,5]});
+    con.box(13,0.9,0.18, 1.2,dy+0.45,PLAN/2+7.5,{color:C.deck, uvs:[9,0.8]});     // parapet upstand
+    met.box(13,0.05,0.05, 1.2,dy+1.05,PLAN/2+7.5,{color:C.metal});                // rail
+    con.box(0.18,0.9,7.4, 7.6,dy+0.45,PLAN/2+3.8,{color:C.deck, uvs:[5,0.8]});
+    met.box(0.05,0.05,7.4, 7.6,dy+1.05,PLAN/2+3.8,{color:C.metal});
+    // perforated screen-block wall (real holes)
+    (function(){
+      const sx=-3.4, sz=PLAN/2+7.5, bw=0.36, gp=0.15, rows=3, cols=9;
+      con.box(cols*(bw+gp)+0.2,0.12,0.22, sx,dy+0.06,sz,{color:C.screen});
+      for(let r2=0;r2<rows;r2++) for(let c2=0;c2<cols;c2++){
+        con.box(bw,bw,0.2, sx-(cols*(bw+gp))/2+ (c2+0.5)*(bw+gp), dy+0.30+r2*(bw+gp), sz,{color:C.screen, uvs:[0.5,0.5]});
+      }
+      con.box(cols*(bw+gp)+0.2,0.12,0.22, sx,dy+0.30+rows*(bw+gp)-0.05,sz,{color:C.screen});
+    })();
+    // broad stair: treads + stringers + handrails with posts
+    (function(){
+      const steps=13, sh=dy/steps, sd=0.60, sw=4.4, x0=-4.8, z0=PLAN/2+7.7;
+      for(let i=0;i<steps;i++){
+        con.box(sw,sh,sd, x0,dy-sh*(i+0.5),z0+0.3+i*sd,{color:C.deck, uvs:[3,0.3]});
+        flat.box(sw,0.04,0.05, x0,dy-sh*i-0.02,z0+0.3+i*sd-sd/2+0.03,{color:0x7d766b}); // nosing
+      }
+      const rl=steps*sd;
+      for(const s of [-1,1]){
+        const hx=x0+s*(sw/2+0.08);
+        con.box(0.14,1.7,rl+0.6, hx,dy*0.5,z0+rl/2,{color:C.deck,rx:0, uvs:[1,3]});
+        for(let p=0;p<=4;p++){
+          const t=p/4;
+          met.box(0.05,0.95,0.05, hx,dy*(1-t)+0.55+ (t*0.1), z0+0.2+rl*t,{color:C.metal});
+        }
+        met.box(0.06,0.06,Math.hypot(rl,dy)+0.4, hx,dy*0.5+0.95,z0+rl/2,
+                {rx:Math.atan2(dy,rl),color:C.metal});
+      }
+    })();
+    // planters + shrubs, awnings, bollards, bins
+    for(const [px,pz] of [[6.2,PLAN/2+6.2],[-0.6,PLAN/2+6.6]]){
+      con.box(1.6,0.7,1.1, px,dy+0.35,pz,{color:C.deck, uvs:[1.2,0.6]});
+      flat.sphere(0.62, px,dy+0.95,pz,{sy:0.8,color:C.tree2});
+      flat.sphere(0.45, px+0.5,dy+0.85,pz+0.2,{sy:0.8,color:C.tree3});
+    }
+    for(const [ax,az,rot] of [[-2.6,PLAN/2+1.3,0.12],[4.6,PLAN/2+1.5,0.14],[-8.2,PLAN/2-2.0,0.12]]){
+      flat.box(4.0,0.10,2.0, ax,2.85,az,{rx:rot,color:C.awning});
+      for(let i=0;i<5;i++) flat.box(0.72,0.22,0.05, ax-1.6+i*0.8,2.62,az+0.98,{color:C.awning});
+    }
+    for(let i=0;i<4;i++) met.cyl(0.09,0.09,0.85,8, -7+i*1.6,0.42,PLAN/2+11.5,{color:C.dark});
+
+    // walkway bridge east to finger block (masterplan feature)
+    con.box(16,0.4,3.2, PLAN/2+8,dy-0.2,-2,{color:C.deck, uvs:[10,2]});
+    con.box(16,0.85,0.15, PLAN/2+8,dy+0.42,-0.5,{color:C.deck, uvs:[10,0.7]});
+    con.box(16,0.85,0.15, PLAN/2+8,dy+0.42,-3.5,{color:C.deck, uvs:[10,0.7]});
+    met.box(16,0.05,0.05, PLAN/2+8,dy+0.98,-0.5,{color:C.metal});
+    met.box(16,0.05,0.05, PLAN/2+8,dy+0.98,-3.5,{color:C.metal});
+    for(const bx of [PLAN/2+4.5,PLAN/2+11.5]) con.box(0.5,dy,0.5, bx,dy/2,-2,{color:C.pier, uvs:[0.6,2]});
+
+    [rib,agg,con,flat,gls,met].forEach(b=>b.build(tower1974));
+  })();
+  scene.add(tower1974);
+
+  // ===================== TOWER 2016 (high detail) =====================
+  const tower2016 = new THREE.Group();
+  (function(){
+    const clad=new Bucket(M.clad), flat=new Bucket(M.flat), gls=new Bucket(M.glass);
+    const COLS=6, CW=(PLAN-1.8)/COLS;
+    flat.box(PLAN,SHAFT_TOP,PLAN, 0,SHAFT_TOP/2,0,{color:C.cladDk});
+    for(let side=0;side<4;side++){
+      for(let f=0;f<RES_FLOORS+1;f++){
+        const y0=PODIUM_H+f*FLOOR_H;
+        faceAdd(clad,'box',[PLAN-1.8,1.02,0.14], side,0,y0+0.51,0.05,{color:C.clad, uvs:[10,1]});
+        for(let c=0;c<COLS;c++){
+          const cx=-PLAN/2+0.9+CW*(c+0.5), wh=FLOOR_H-1.02;
+          faceAdd(flat,'box',[CW*0.66,wh,0.06], side,cx,y0+1.02+wh/2,0.02,{color:0x3d4750}); // reveal
+          faceAdd(flat,'box',[CW*0.62,0.06,0.09], side,cx,y0+1.02+wh-0.05,0.05,{color:C.frame});
+          faceAdd(flat,'box',[CW*0.62,0.06,0.09], side,cx,y0+1.07,0.05,{color:C.frame});
+          faceAdd(flat,'box',[0.06,wh-0.1,0.09], side,cx,y0+1.02+wh/2,0.05,{color:C.frame});
+          for(const s of [-1,1])
+            faceAdd(gls,'box',[CW*0.28,wh-0.18,0.05], side,cx+s*CW*0.16,y0+1.02+wh/2,0.045,{color:glassTint()});
+        }
+      }
+      for(let c=0;c<=COLS;c++){
+        faceAdd(clad,'box',[0.44,RES_H+FLOOR_H,0.32], side,-PLAN/2+0.9+CW*c,
+                PODIUM_H+(RES_H+FLOOR_H)/2,0.13,{color:C.clad, uvs:[0.8,24]});
+      }
+      for(const s of [-1,1])
+        faceAdd(clad,'box',[1.02,RES_H+FLOOR_H,0.34], side,s*(PLAN/2-0.5),
+                PODIUM_H+(RES_H+FLOOR_H)/2,0.14,{color:C.clad, uvs:[1.4,24]});
+      // crown fins + connecting rail
+      const finH=3.5;
+      for(let c=0;c<=COLS;c++){
+        faceAdd(clad,'box',[0.44,finH,0.28], side,-PLAN/2+0.9+CW*c,ROOF_Y+finH/2-0.5,0.17,
+                {rx: side===0?0.15:(side===1?-0.15:0.15), color:C.clad, uvs:[0.8,4]});
+      }
+      faceAdd(flat,'box',[PLAN-1.6,0.16,0.10], side,0,ROOF_Y+finH-0.8,0.42,{color:C.cladDk});
+      // podium: enclosed community levels + glazing
+      faceAdd(clad,'box',[PLAN-1.6,MEZZ_H,0.22], side,0,GROUND_H+MEZZ_H/2,0.06,{color:C.cladDk, uvs:[10,3]});
+      faceAdd(gls,'box',[PLAN-1.8,2.5,0.20], side,0,1.55,0.09,{color:C.glassM});
+      for(let i=0;i<=10;i++)
+        faceAdd(flat,'box',[0.09,2.5,0.24], side,-PLAN/2+0.9+i*((PLAN-1.8)/10),1.55,0.10,{color:C.frame});
+    }
+    flat.box(PLAN-2,1.0,PLAN-2, 0,ROOF_Y+0.5,0,{color:C.cladDk});
+    // entrance canopy with posts
+    clad.box(8.6,0.28,4.6, 0,3.42,PLAN/2+2.3,{color:C.clad, uvs:[6,3]});
+    flat.box(8.6,0.16,0.2, 0,3.28,PLAN/2+4.55,{color:C.cladDk});
+    for(const s of [-1,1]) flat.box(0.24,3.3,0.24, s*3.6,1.7,PLAN/2+4.15,{color:C.cladDk});
+    [clad,flat,gls].forEach(b=>b.build(tower2016));
+  })();
+  tower2016.visible=false;
+  scene.add(tower2016);
+
+  // ===================== context =====================
+  (function(){
+    const flat=new Bucket(M.flat), con=new Bucket(M.con), met=new Bucket(M.metal);
+    const ctx=new THREE.Group();
+
+    const ground=new THREE.Mesh(new THREE.CircleGeometry(360,48),
+      new THREE.MeshStandardMaterial({color:0x8fa07e, roughness:1}));
+    ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; ctx.add(ground);
+    const apron=new THREE.Mesh(new THREE.CircleGeometry(38,40),
+      new THREE.MeshStandardMaterial({color:0xa8a49a, roughness:1}));
+    apron.rotation.x=-Math.PI/2; apron.position.y=0.02; apron.receiveShadow=true; ctx.add(apron);
+    // paths
+    for(const [w,d,x,z,r] of [[4,60,0,PLAN/2+42,0],[70,3.5,-20,-30,0.4],[3.5,50,-45,20,0]]){
+      flat.box(w,0.06,d, x,0.04,z,{ry:r,color:0xa8a49a});
+    }
+    // finger blocks with window texture; the east one meets the walkway bridge
+    const fb=new Bucket(M.finger);
+    for(const [L,x,z,r] of [[54,PLAN/2+16+22,-2,0],[52,-34,54,1.15],[48,-60,-32,-0.5],[50,30,-56,0.2]]){
+      fb.box(L,9.6,10, x,4.8,z,{ry:r, uvs:[L/9,1]});
+      flat.box(L+0.4,0.5,10.4, x,9.85,z,{ry:r,color:0x8d8578});
+    }
+    // fenced sports court (photo 1)
+    (function(){
+      const cx=-28,cz=26,cw=22,cd=14;
+      flat.box(cw,0.05,cd, cx,0.06,cz,{color:0x5e7a5e});
+      for(let i=0;i<=6;i++){
+        met.box(0.07,3.4,0.07, cx-cw/2+i*(cw/6),1.7,cz-cd/2,{color:C.metal});
+        met.box(0.07,3.4,0.07, cx-cw/2+i*(cw/6),1.7,cz+cd/2,{color:C.metal});
+      }
+      for(let i=0;i<=4;i++){
+        met.box(0.07,3.4,0.07, cx-cw/2,1.7,cz-cd/2+i*(cd/4),{color:C.metal});
+        met.box(0.07,3.4,0.07, cx+cw/2,1.7,cz-cd/2+i*(cd/4),{color:C.metal});
+      }
+      met.box(cw,0.06,0.06, cx,3.4,cz-cd/2,{color:C.metal});
+      met.box(cw,0.06,0.06, cx,3.4,cz+cd/2,{color:C.metal});
+      met.box(0.06,0.06,cd, cx-cw/2,3.4,cz,{color:C.metal});
+      met.box(0.06,0.06,cd, cx+cw/2,3.4,cz,{color:C.metal});
+    })();
+    // lamp posts + benches
+    for(const [x,z] of [[8,PLAN/2+14],[-10,PLAN/2+30],[24,-18],[-30,-8],[-14,44]]){
+      met.cyl(0.07,0.09,5.2,7, x,2.6,z,{color:C.lamp});
+      met.box(0.9,0.1,0.1, x+0.4,5.15,z,{color:C.lamp});
+      flat.box(0.5,0.16,0.24, x+0.8,5.1,z,{color:0xe8e2c8});
+    }
+    for(const [x,z,r] of [[5,PLAN/2+16,0.3],[-9,PLAN/2+24,-0.2]]){
+      flat.box(1.8,0.08,0.45, x,0.55,z,{ry:r,color:0x7a6a52});
+      flat.box(1.8,0.4,0.08, x,0.35,z-0.18,{ry:r,color:0x7a6a52});
+    }
+    // trees — clustered foliage, entrance kept clear
+    for(let i=0;i<34;i++){
+      const ang=Math.random()*Math.PI*2, r=26+Math.random()*85;
+      const x=Math.cos(ang)*r, z=Math.sin(ang)*r;
+      if(Math.abs(x)<15 && z>6 && z<34) continue;
+      if(x>PLAN/2+4 && x<PLAN/2+18 && Math.abs(z+2)<5) continue;   // bridge clear
+      const h=4.5+Math.random()*4.5;
+      flat.cyl(0.16,0.26,h*0.5,6, x,h*0.25,z,{color:C.trunk});
+      const cols=[C.tree1,C.tree2,C.tree3];
+      flat.sphere(h*0.36, x,h*0.62,z,{sy:1.1,color:cols[i%3]});
+      flat.sphere(h*0.26, x+h*0.2,h*0.55,z+h*0.12,{color:cols[(i+1)%3]});
+      flat.sphere(h*0.22, x-h*0.18,h*0.5,z-h*0.1,{color:cols[(i+2)%3]});
+    }
+    [flat,con,met,fb].forEach(b=>b.build(ctx));
+    scene.add(ctx);
+  })();
+
 
   // Orbit target: geometric centre of the tower assembly (podium stairs/deck
   // extend asymmetrically — origin is not the visual centre).
@@ -640,29 +880,6 @@
     const c = new THREE.Vector3();
     towerBox.getCenter(c);
     return new THREE.Vector3(c.x, ROOF_Y * 0.44, c.z);
-  }
-
-  // ================= context =================
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(340, 48), mat.grass);
-  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
-  const apron = new THREE.Mesh(new THREE.CircleGeometry(36, 40), mat.path);
-  apron.rotation.x = -Math.PI/2; apron.position.y = 0.02; apron.receiveShadow = true; scene.add(apron);
-
-  [[52,10,54,-16,0.35],[50,10,-32,52,1.15],[46,10,-58,-30,-0.5]].forEach(a=>{
-    const b = new THREE.Mesh(new THREE.BoxGeometry(a[0], 9.5, a[1]), mat.lowBlock);
-    b.position.set(a[2], 4.75, a[3]); b.rotation.y = a[4];
-    b.castShadow = true; b.receiveShadow = true; scene.add(b);
-  });
-  // simple trees, echoing the leafy foreground of the photos
-  for(let i=0;i<26;i++){
-    const ang = Math.random()*Math.PI*2, r = 28 + Math.random()*70;
-    const x = Math.cos(ang)*r, z = Math.sin(ang)*r;
-    if(Math.abs(x)<16 && z>8 && z<28) continue;              // keep the entrance clear
-    const h = 5+Math.random()*4;
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.3,h*0.45,6), mat.trunk);
-    t.position.set(x, h*0.22, z); t.castShadow = true; scene.add(t);
-    const c = new THREE.Mesh(new THREE.SphereGeometry(h*0.42, 8, 6), mat.tree);
-    c.position.set(x, h*0.62, z); c.scale.y = 1.15; c.castShadow = true; scene.add(c);
   }
 
   // ================= orbit controls =================
@@ -725,6 +942,19 @@
     historyBtn.setAttribute('aria-expanded', String(!open));
     historyPanel.classList.toggle('hidden', open);
   });
+
+  // cladding / era toggle
+  const b74 = document.getElementById('btn1974');
+  const b16 = document.getElementById('btn2016');
+  function setEra(era){
+    const original = era === '1974';
+    tower1974.visible = original;
+    tower2016.visible = !original;
+    b74.setAttribute('aria-pressed', String(original));
+    b16.setAttribute('aria-pressed', String(!original));
+  }
+  b74.addEventListener('click', () => setEra('1974'));
+  b16.addEventListener('click', () => setEra('2016'));
 
   // ================= tributes: sign in + floating hearts =================
   const heartsLayer = document.getElementById('hearts');
